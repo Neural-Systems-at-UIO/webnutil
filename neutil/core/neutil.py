@@ -13,7 +13,7 @@ class Neutil:
 
     Methods
     -------
-    __init__(...)
+    constructor(...)
         Initialize the Neutil class with segmentation, alignment, atlas and region settings.
     get_coordinates(...)
         Extract and transform pixel coordinates from segmentation files.
