@@ -250,7 +250,8 @@ def create_region_dict(points, regions):
 # this function writes the region dictionary to a meshview json
 def write_points(points_dict, filename, info_file):
     """
-    Saves a region-based point dictionary to a MeshView-compatible JSON layout.
+    Saves a region-based point dictionary to a MeshView-compatible JSON layout,
+    streaming the data to file instead of loading everything into memory.
 
     Each region is recorded with: index (idx), name, color components (r, g, b),
     and a count of how many points belong to that region.
@@ -264,21 +265,55 @@ def write_points(points_dict, filename, info_file):
     info_file : pandas.DataFrame
         A table with region IDs, names, and color data (r, g, b) for each region.
     """
-    meshview = [
-        {
-            "idx": idx,
-            "count": len(points_dict[name]) // 3,
-            "name": str(info_file["name"].values[info_file["idx"] == name][0]),
-            "triplets": points_dict[name],
-            "r": int(info_file["r"].values[info_file["idx"] == name][0]),
-            "g": int(info_file["g"].values[info_file["idx"] == name][0]),
-            "b": int(info_file["b"].values[info_file["idx"] == name][0]),
-        }
-        for name, idx in zip(points_dict.keys(), range(len(points_dict.keys())))
-    ]
-    # write meshview json
-    with open(filename, "w") as f:
-        json.dump(meshview, f)
+    with open(filename, 'w') as f:
+        # Write opening bracket for JSON array
+        f.write('[')
+        
+        # Track whether we've written the first item yet
+        first_item = True
+        
+        # Process each region
+        for idx, name in enumerate(points_dict.keys()):
+            # Each loop the aim is to only handle one region on memory
+            # Add comma after first item
+            if not first_item:
+                f.write(',')
+            else:
+                first_item = False
+                
+            # Get region information
+            triplets = points_dict[name]
+            count = len(triplets) // 3
+            region_name = str(info_file["name"].values[info_file["idx"] == name][0])
+            r_val = int(info_file["r"].values[info_file["idx"] == name][0])
+            g_val = int(info_file["g"].values[info_file["idx"] == name][0])
+            b_val = int(info_file["b"].values[info_file["idx"] == name][0])
+            
+            # Write region object
+            f.write(f'{{\n')
+            f.write(f'  "idx": {idx},\n')
+            f.write(f'  "count": {count},\n')
+            f.write(f'  "name": "{region_name}",\n')
+            
+            # Write triplets array - potentially the largest part
+            f.write(f'  "triplets": [')
+            for i, val in enumerate(triplets):
+                if i > 0:
+                    f.write(',')
+                f.write(f'{val}')
+            f.write(f'],\n')
+            # This currently handles triplets with rgb, can be memory efficient with monochrome
+            # Eg. a segmentation that can work with 
+
+
+            # Write color values
+            f.write(f'  "r": {r_val},\n')
+            f.write(f'  "g": {g_val},\n')
+            f.write(f'  "b": {b_val}\n')
+            f.write(f'}}')
+            
+        # Write closing bracket for JSON array
+        f.write(']')
 
 
 # related to read and write: write_points_to_meshview
