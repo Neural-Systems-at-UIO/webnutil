@@ -52,6 +52,7 @@ def reconstruct_dzi(zip_file_path):
 
         # Create an empty image
         image = np.zeros((height, width, 3), dtype=np.uint8)
+        print("Building image empty, size: " + (image.nbytes)/(1024*1240) + "MB")
 
         # Fill in the image with the highest level tiles
         for file in highest_level_files:
