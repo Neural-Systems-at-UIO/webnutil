@@ -67,4 +67,8 @@ def load_custom_atlas(atlas_path, hemi_path, label_path):
     else:
         hemi_volume = None
     atlas_labels = pd.read_csv(label_path)
+    print(
+        f"Loaded custom atlas with {len(atlas_labels)} regions from {atlas_path} and {hemi_path if hemi_path else 'no hemisphere file'}"
+    )
+    print(atlas_volume)
     return atlas_volume, hemi_volume, atlas_labels
