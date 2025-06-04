@@ -41,12 +41,15 @@ It then uses the geometric center of the objects to assign them to regions using
 
 *Known issues*: For the synthetic test dataset which has segmentations of the same size as the images used for atlas-registration, the "object counts per region" using webnutil-service and Nutil are identical and correct. For test datasets with segmentations larger than the images used for atlas-registration, the "object counts per region" from webnutil-service are incorrect (I manually counted for one region, results were way off). Something is going wrong with assigning objects to regions when atlas maps are scaled. **To be investigated.** We also known that Nutil uses a different method for assigning objects to regions. **How does Nutil assign objects to regions? - Look this up in the Nutil code**.
 
-## How are object areas per region calculated?
+## How are object areas (pixel_count) per region calculated?
+
+To correctly calculate object areas per region (and area fraction), Nutil has a feature called "area_splitting". This means that Nutil assigns each object pixel to its overlapping region, then calculates object pixels per region / region area (as opposed to assigning objects using the geometric center and then dividing object area /region area, which will give incorrect results when objects overlap several atlas regions). For webnutil-service, the intention was to implement pixel_count by the same method as Nutil with area splitting.
 
 **To be validated**
 
 ## How are area fractions calculated? 
 
-To correctly calculate area fraction, Nutil has a feature called "area_splitting". This means that Nutil assigns each object pixel to its overlapping region, then calculates object pixels per region / region area (as opposed to assigning objects using the geometric center and then dividing object area /region area, which will give incorrect results when objects overlap several atlas regions). This was discussed with Harry Carey. The plan was to implement this in the same way as Nutil with area splitting.
+In webnutil_service, area fraction = pixel_count/ region_area. This has been validated.
 
-**To be validated.** 
+
+
