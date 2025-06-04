@@ -43,7 +43,11 @@ It then uses the geometric center of the objects to assign them to regions using
 
 **How does Nutil define objects? - Look this up in the Nutil code.**
 
-*Known issues*: For the synthetic test dataset which has segmentations of the same size as the images used for atlas-registration, the "object counts per region" using webnutil-service and Nutil are identical and correct. For test datasets with segmentations larger than the images used for atlas-registration, the "object counts per region" from webnutil-service are incorrect (I manually counted for one region, results were way off). Something is going wrong with assigning objects to regions when atlas maps are scaled. **To be investigated.** We also known that Nutil uses a different method for assigning objects to regions. 
+*Known issues*: For the synthetic test dataset which has segmentations of the same size as the images used for atlas-registration, the "object counts per region" using webnutil-service and Nutil are identical and correct. For test datasets with segmentations larger than the images used for atlas-registration, the "object counts per region" from webnutil-service are incorrect (I manually counted for one region, results were way off). Something is going wrong with assigning objects to regions when atlas maps are scaled. I also confirmed this for the synthetic dataset doubled in size. 
+
+**To be investigated.** 
+
+We also known that Nutil uses a different method for assigning objects to regions. 
 
 **How does Nutil assign objects to regions? - Look this up in the Nutil code**.
 
