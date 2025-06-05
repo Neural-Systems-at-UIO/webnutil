@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+    volumes:
+      - ./nutil:/app/nutil:ro
+      - ./api:/app/api:ro
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: always
+    depends_on:
+      - redis
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Read only volumes
+      - ./nutil:/app/nutil:ro
+      - ./api:/app/api:ro
+      - ./tests/test_data/allen_mouse_2017_atlas:/app/atlases/allen_mouse_2017_atlas:ro
+      - ./tests/test_data/real_data:/app/atlases/real_data:ro
+      # Write volumes for the intermediary data
+      - ./data
+
+volumes:
+  redis-data:
+
+

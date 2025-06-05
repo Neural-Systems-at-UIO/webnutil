@@ -175,9 +175,11 @@ def folder_to_atlas_space(
         if len(current_slice_index[0]) == 0:
             print("segmentation file does not exist in alignment json:")
             print(segmentation_path)
+            region_areas_list[index] = pd.DataFrame({"idx": []})
             continue
         current_slice = slices[current_slice_index[0][0]]
         if current_slice["anchoring"] == []:
+            region_areas_list[index] = pd.DataFrame({"idx": []})
             continue
         current_flat = get_current_flat_file(
             seg_nr, flat_files, flat_file_nrs, use_flat
@@ -375,8 +377,8 @@ def segmentation_to_atlas_space(
         None
     """
     segmentation = load_segmentation(segmentation_path)
-    if pixel_id == "auto":
-        pixel_id = detect_pixel_id(segmentation)
+    # Use BGR for red (OpenCV default): [0, 0, 255]
+    pixel_id = np.array([0, 0, 255], dtype=np.uint8)
     seg_height, seg_width = segmentation.shape[:2]
     reg_height, reg_width = slice_dict["height"], slice_dict["width"]
     triangulation = get_triangulation(slice_dict, reg_width, reg_height, non_linear)
@@ -407,15 +409,41 @@ def segmentation_to_atlas_space(
     centroids, points = None, None
     scaled_centroidsX, scaled_centroidsY, scaled_x, scaled_y = None, None, None, None
     centroids, scaled_centroidsX, scaled_centroidsY = get_centroids(
-        segmentation, pixel_id, y_scale, x_scale, object_cutoff
+        segmentation, pixel_id, y_scale, x_scale, object_cutoff, tolerance=10
     )
-    scaled_y, scaled_x = get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale)
-    per_point_labels = atlas_map[
-        np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
-    ]
-    per_centroid_labels = atlas_map[
-        np.round(scaled_centroidsY).astype(int), np.round(scaled_centroidsX).astype(int)
-    ]
+    scaled_y, scaled_x = get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10)
+
+    # Robustly handle missing color matches
+    # This for some reason keeps failing with some segmentations
+    if (scaled_y is None or scaled_x is None or
+        scaled_centroidsX is None or scaled_centroidsY is None):
+        # Set all outputs to empty arrays and return early
+        points_list[index] = np.array([])
+        centroids_list[index] = np.array([])
+        region_areas_list[index] = pd.DataFrame()
+        centroids_labels[index] = np.array([])
+        per_centroid_undamaged_list[index] = np.array([])
+        points_labels[index] = np.array([])
+        per_point_undamaged_list[index] = np.array([])
+        points_hemi_labels[index] = np.array([])
+        centroids_hemi_labels[index] = np.array([])
+        return
+
+    if scaled_y is not None and scaled_x is not None:
+        per_point_labels = atlas_map[
+            np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
+        ]
+    else:
+        per_point_labels = np.array([])
+
+    if scaled_centroidsY is not None and scaled_centroidsX is not None:
+        per_centroid_labels = atlas_map[
+            np.round(scaled_centroidsY).astype(int),
+            np.round(scaled_centroidsX).astype(int),
+        ]
+    else:
+        per_centroid_labels = np.array([])
+
     if damage_mask is not None:
         damage_mask = cv2.resize(
             damage_mask.astype(np.uint8),
@@ -511,9 +539,9 @@ def get_triangulation(slice_dict, reg_width, reg_height, non_linear):
     return None
 
 
-def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0):
+def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10):
     """
-    Finds object centroids for a given pixel color and applies scaling.
+    Finds object centroids for a given pixel color and applies scaling, with tolerance.
 
     Args:
         segmentation (ndarray): Segmentation array.
@@ -525,8 +553,12 @@ def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0):
     Returns:
         tuple: (centroids, scaled_centroidsX, scaled_centroidsY)
     """
-    binary_seg = segmentation == pixel_id
-    binary_seg = np.all(binary_seg, axis=2)
+    # Debug: print unique colors in the segmentation
+    # unique_colors = np.unique(segmentation.reshape(-1, segmentation.shape[2]), axis=0)
+    # print("Unique colors in segmentation:", unique_colors)
+
+    # Use tolerance for color matching
+    binary_seg = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
     centroids, area, coords = get_centroids_and_area(
         binary_seg, pixel_cut_off=object_cutoff
     )
@@ -540,9 +572,9 @@ def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0):
     return centroids, scaled_centroidsX, scaled_centroidsY
 
 
-def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale):
+def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
     """
-    Retrieves pixel coordinates for a specified color and scales them.
+    Retrieves pixel coordinates for a specified color and scales them, with tolerance.
 
     Args:
         segmentation (ndarray): Segmentation array.
@@ -553,8 +585,9 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale):
     Returns:
         tuple: (scaled_y, scaled_x)
     """
-    id_pixels = find_matching_pixels(segmentation, pixel_id)
-    if len(id_pixels[0]) == 0:
+    mask = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
+    id_y, id_x = np.where(mask)
+    if len(id_y) == 0:
         return None, None
-    scaled_y, scaled_x = scale_positions(id_pixels[0], id_pixels[1], y_scale, x_scale)
+    scaled_y, scaled_x = scale_positions(id_y, id_x, y_scale, x_scale)
     return scaled_y, scaled_x

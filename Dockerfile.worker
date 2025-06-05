@@ -1,0 +1,36 @@
+# Use official Python base image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies (if needed)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt ./
+COPY api_requirements.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r api_requirements.txt
+
+# Copy application code
+COPY api/ ./api/
+COPY nutil/ ./nutil/
+COPY atlases ./app/atlases/ 
+# Update this later in the code to /atlases
+
+# Copy atlases for local testing (for production, mount a PVC at /app/atlases)
+COPY tests/test_data/allen_mouse_2017_atlas /app/atlases/allen_mouse_2017_atlas
+COPY tests/test_data/real_data /app/atlases/real_data
+# Add more atlas copies as needed
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "api/worker.py"]

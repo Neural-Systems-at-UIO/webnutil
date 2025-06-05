@@ -3,5 +3,6 @@ test_result/
 __pycache__/
 *.py[cod]
 *.pyost 
-
+test_dzi_reconstruction.py
+nutil.log
 tests/test_real
