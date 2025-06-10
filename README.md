@@ -17,7 +17,7 @@ Output:
 
 # Technical details
 
-## How are regions defined? 
+## How are regions defined and areas calculated? 
 
 Webnutil-service creates atlas maps for each brain section internally using the linear and nonlinear markers in the atlas-registration.json. It uses these to define regions in the segmentations, which it uses to measure region areas in pixels. If the segmentations are larger than the atlas maps, it scales up the atlas maps to the size of the segmentations, then uses opencv nearest_neighbour to measure region areas: https://docs.opencv.org/3.4/da/d54/group__imgproc__transform.html. 
 
