@@ -3,6 +3,7 @@ import sys
 import time
 import traceback
 import json
+import asyncio  # Added asyncio
 from redis import Redis
 from utils import download_directory, get_json, upload_directory, TaskStatus
 from nutil import Nutil
@@ -30,13 +31,17 @@ def process_task(task_id):
             },
         )
         # Download segmentation directory
-        seg_paths = download_directory(
-            str(task["segmentation_path"]), str(task["token"]), task_id
-        )
+        seg_paths = asyncio.run(
+            download_directory(
+                str(task["segmentation_path"]), str(task["token"]), task_id
+            )
+        )  # Use asyncio.run()
         # Download alignment JSON
-        alignment_json, alignment_json_path = get_json(
-            str(task["alignment_json_path"]), str(task["token"]), task_id
-        )
+        alignment_json, alignment_json_path = asyncio.run(
+            get_json(
+                str(task["alignment_json_path"]), str(task["token"]), task_id
+            )
+        )  # Use asyncio.run()
         # Update status: PROCESSING
         redis.hset(
             task_key,
@@ -74,7 +79,7 @@ def process_task(task_id):
                 "message": "Uploading results...",
             },
         )
-        upload_directory(output_dir, str(task["upload_to"]), str(task["token"]))
+        asyncio.run(upload_directory(output_dir, str(task["upload_to"]), str(task["token"]))) # Use asyncio.run()
         # Update status: COMPLETED
         redis.hset(
             task_key,

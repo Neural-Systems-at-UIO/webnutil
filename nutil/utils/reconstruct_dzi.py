@@ -265,7 +265,7 @@ def reconstruct_dzi_pyvips(zip_file_path: str):
 
             finally:
                 # Clean up temp files only after all processing is done
-                for temp_tile_path in temp_tile_paths:
+                for temp_tile_path in temp_files: # Changed from temp_tile_paths to temp_files
                     try:
                         if os.path.exists(temp_tile_path):
                             os.remove(temp_tile_path)

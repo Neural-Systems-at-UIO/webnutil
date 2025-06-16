@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis import Redis
 from pydantic import BaseModel
 import uuid 
+import json # Ensure json is imported
 
 
 
@@ -19,6 +20,9 @@ class NutilRequest(BaseModel):
     # label_path: str
 
 # Init redis connection
+
+QUEUE_NAME = "nutil_tasks_queue" # For consistency with worker
+ALL_TASKS_SET_KEY = "nutil:all_tasks_set" # Key for the set of all task IDs
 
 atlas_configurations = { 
     # Atlases offered for now with the QUINT Online service
@@ -65,8 +69,6 @@ def schedule_task(request: NutilRequest):
 
     # Check who is calling
 
-
-
     # Schedule to the queue
     task_id = str(uuid.uuid4())
 
@@ -76,17 +78,23 @@ def schedule_task(request: NutilRequest):
         "task_id": task_id,
         "segmentation_path": request.segmentation_path,
         "alignment_json_path": request.alignment_json_path,
-        "colour": request.colour,
+        "colour": json.dumps(request.colour),  # Store colour as JSON string
         "atlas_path": atlas_configurations[request.atlas_name]["path"],
         "label_path": atlas_configurations[request.atlas_name]["labels"],
         "upload_to": request.output_path,
-        "token": request.token,
-        "status": "scheduled",
+        "token": request.token, # Token will be stored but not returned in status checks
+        "status": "scheduled", # Initial status
         "message": "Task has been scheduled successfully."
     }
 
-    # Store the task in Redis
-    redis.rpush('nutil_tasks', task_info)
+    # Store the task details in a Redis hash
+    redis.hmset(f"nutil_task:{task_id}", task_info)
+    
+    # Push only the task_id to the worker queue
+    redis.rpush(QUEUE_NAME, task_id)
+
+    # Add task_id to a set for get_all_tasks
+    redis.sadd(ALL_TASKS_SET_KEY, task_id)
 
     return {"message": "Task scheduled successfully.", 
             "task_id": task_id}
@@ -96,18 +104,43 @@ def get_task(task_id: str):
     """
     Returns the status of a specific task by its ID.
     """
-    tasks = redis.lrange('nutil_tasks', 0, -1)
-    for task in tasks:
-        task_data = task.decode('utf-8')
-        if task_data['task_id'] == task_id:
-            return {"task": task_data}
+    task_details = redis.hgetall(f"nutil_task:{task_id}")
+    
+    if task_details:
+        # Obfuscate token before returning
+        task_details.pop("token", None) 
+        
+        # Convert colour back to list if it exists and is a string
+        if 'colour' in task_details and isinstance(task_details['colour'], str):
+            try:
+                task_details['colour'] = json.loads(task_details['colour'])
+            except json.JSONDecodeError:
+                # If it's not valid JSON, leave it as is or handle error
+                # For now, we'll leave it as the string it was in Redis
+                pass 
+        return {"task": task_details}
     
     return {"message": "Task not found."}
 
 @app.get("/all-tasks")
 def get_all_tasks():
-    tasks = redis.lrange('nutil_tasks', 0, -1)
-    return {"tasks": [task.decode('utf-8') for task in tasks]}
+    task_ids_bytes = redis.smembers(ALL_TASKS_SET_KEY)
+    tasks_details_list = []
+    for task_id_bytes in task_ids_bytes:
+        task_id = task_id_bytes.decode('utf-8') # smembers returns bytes
+        task_details = redis.hgetall(f"nutil_task:{task_id}")
+        if task_details:
+            # Obfuscate token before returning
+            task_details.pop("token", None)
+
+            # Convert colour back to list if it exists and is a string
+            if 'colour' in task_details and isinstance(task_details['colour'], str):
+                try:
+                    task_details['colour'] = json.loads(task_details['colour'])
+                except json.JSONDecodeError:
+                    pass # Leave as string if not valid JSON
+            tasks_details_list.append(task_details)
+    return {"tasks": tasks_details_list}
 
 # TODO Add download for images and json
 # TODO import the utils

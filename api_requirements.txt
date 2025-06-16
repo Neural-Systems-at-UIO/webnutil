@@ -2,4 +2,6 @@ fastapi
 redis
 uvicorn
 requests
-
+aiohttp
+aiofiles
+pydantic
