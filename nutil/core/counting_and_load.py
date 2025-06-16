@@ -695,16 +695,22 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
         ndarray: The loaded or transformed image.
     """
     if image_vector is not None and volume is not None:
-        image = generate_target_slice(image_vector, volume)
-        image = np.float64(image)
-        if triangulation is not None:
-            image = warp_image(image, triangulation, rescaleXY)
-    else:
-        if file.endswith(".flat"):
-            image = read_flat_file(file)
-        if file.endswith(".seg"):
-            image = read_seg_file(file)
+        # Generate the target slice from the volume using the image_vector
+        # Corrected argument order: ouv (image_vector) first, then atlas (volume)
+        target_slice = generate_target_slice(image_vector, volume)
+        # Convert to uint8 as requested.
+        # Note: If target_slice values are not already in the 0-255 range (e.g., floats 0.0-1.0),
+        # appropriate scaling (e.g., `* 255`) and/or clamping (e.g., `np.clip`)
+        # should be applied before this cast to avoid data loss or unexpected results.
+        image = target_slice.astype(np.uint8)
+    elif file.endswith(".seg"):  # Changed image_path to file
+        image = read_seg_file(file)
         image = assign_labels_to_image(image, labelfile)
+    else:
+        image = read_flat_file(file)
+
+    if triangulation is not None:
+        image = warp_image(image, triangulation, rescaleXY)
 
     return image
 

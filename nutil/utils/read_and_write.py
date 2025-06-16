@@ -11,6 +11,7 @@ import cv2
 from .reconstruct_dzi import reconstruct_dzi
 from .atlas_loader import load_atlas_labels
 
+
 def open_custom_region_file(path):
     """
     Opens a custom region file (TSV or XLSX) and returns both a dictionary
@@ -219,7 +220,6 @@ def load_quint_json(filename, propagate_missing_values=True):
     return vafile
 
 
-
 # related to read_and_write, used in write_points_to_meshview
 # this function returns a dictionary of region names
 def create_region_dict(points, regions):
@@ -265,55 +265,65 @@ def write_points(points_dict, filename, info_file):
     info_file : pandas.DataFrame
         A table with region IDs, names, and color data (r, g, b) for each region.
     """
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         # Write opening bracket for JSON array
-        f.write('[')
-        
+        f.write("[")
+
         # Track whether we've written the first item yet
         first_item = True
-        
+
         # Process each region
         for idx, name in enumerate(points_dict.keys()):
             # Each loop the aim is to only handle one region on memory
             # Add comma after first item
             if not first_item:
-                f.write(',')
+                f.write(",")
             else:
                 first_item = False
-                
+
             # Get region information
             triplets = points_dict[name]
             count = len(triplets) // 3
-            region_name = str(info_file["name"].values[info_file["idx"] == name][0])
-            r_val = int(info_file["r"].values[info_file["idx"] == name][0])
-            g_val = int(info_file["g"].values[info_file["idx"] == name][0])
-            b_val = int(info_file["b"].values[info_file["idx"] == name][0])
-            
+
+            # Get region information with a check for missing names/IDs
+            matching_region = info_file[info_file["idx"] == name]
+            if not matching_region.empty:
+                region_name = str(matching_region["name"].values[0])
+                r_val = int(matching_region["r"].values[0])
+                g_val = int(matching_region["g"].values[0])
+                b_val = int(matching_region["b"].values[0])
+            else:
+                # Fallback if the name (ID) is not in info_file
+                region_name = f"Region ID {name}"  # Or "Unknown Region"
+                r_val, g_val, b_val = 128, 128, 128  # Default to gray
+                # Optionally, log a warning here:
+                # import logging
+                # logging.warning(f"Region ID {name} not found in atlas labels. Using default name and color.")
+
             # Write region object
-            f.write(f'{{\n')
+            f.write(f"{{\n")
             f.write(f'  "idx": {idx},\n')
             f.write(f'  "count": {count},\n')
             f.write(f'  "name": "{region_name}",\n')
-            
+
             # Write triplets array - potentially the largest part
             f.write(f'  "triplets": [')
             for i, val in enumerate(triplets):
                 if i > 0:
-                    f.write(',')
-                f.write(f'{val}')
-            f.write(f'],\n')
+                    f.write(",")
+                f.write(f"{val}")
+            f.write(f"],\n")
             # This currently handles triplets with rgb, can be memory efficient with monochrome
-            # Eg. a segmentation that can work with 
-
+            # Eg. a segmentation that can work with
 
             # Write color values
             f.write(f'  "r": {r_val},\n')
             f.write(f'  "g": {g_val},\n')
             f.write(f'  "b": {b_val}\n')
-            f.write(f'}}')
-            
+            f.write(f"}}")
+
         # Write closing bracket for JSON array
-        f.write(']')
+        f.write("]")
 
 
 # related to read and write: write_points_to_meshview
@@ -342,12 +352,23 @@ def write_hemi_points_to_meshview(points, point_names, hemi_label, filename, inf
         split_fn_left = filename.split("/")
         split_fn_left[-1] = "left_hemisphere_" + split_fn_left[-1]
         outname_left = os.sep.join(split_fn_left)
-        write_points_to_meshview(points[hemi_label == 1], point_names[hemi_label == 1], outname_left, info_file)
+        write_points_to_meshview(
+            points[hemi_label == 1],
+            point_names[hemi_label == 1],
+            outname_left,
+            info_file,
+        )
         split_fn_right = filename.split("/")
         split_fn_right[-1] = "right_hemisphere_" + split_fn_right[-1]
         outname_right = os.sep.join(split_fn_right)
-        write_points_to_meshview(points[hemi_label == 2], point_names[hemi_label == 2], outname_right, info_file)
+        write_points_to_meshview(
+            points[hemi_label == 2],
+            point_names[hemi_label == 2],
+            outname_right,
+            info_file,
+        )
     write_points_to_meshview(points, point_names, filename, info_file)
+
 
 # related to read and write: write_points_to_meshview
 # this function combines create_region_dict and write_points functions

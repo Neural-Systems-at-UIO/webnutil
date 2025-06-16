@@ -2,45 +2,45 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis import Redis
 from pydantic import BaseModel
-import uuid
-import json
+import uuid 
+
 
 
 # nutil request model
 class NutilRequest(BaseModel):
     # DATA proxy locations for the files
-    segmentation_path: str
+    segmentation_path: str 
     alignment_json_path: str
-    colour: list[int]  # BGR format, eg RED [0, 0, 255]
-    atlas_name: str  #
+    colour: list[int] # BGR format, eg RED [0, 0, 255]
+    atlas_name: str  # 
     output_path: str  # Data proxy location for the output folder
     token: str  # Data Proxy token
     # atlas_path: str
     # label_path: str
 
-
 # Init redis connection
 
-atlas_configurations = {
+atlas_configurations = { 
     # Atlases offered for now with the QUINT Online service
     # Accessible for api.py for resolving atlas names to paths
-    "ABA_Mouse_CCFv3_2017_25um": {
+    "ABA_Mouse_CCFv3_2017_25um" : {
         "path": "/app/atlases/allen_mouse_2017_atlas/annotation_25_reoriented_2017.nrrd",
-        "labels": "/app/atlases/allen_mouse_2017_atlas/allen2017_colours.csv",
+        "labels" : "/app/atlases/allen_mouse_2017_atlas/allen2017_colours.csv",
         "resolution": "25um",
-        "name": "Allen Mouse Brain Atlas CCFv3 2017 25um",
+        "name" : "Allen Mouse Brain Atlas CCFv3 2017 25um"
+
     },
-    "WHS_SD_Rat_v3_39um": {
+    "WHS_SD_Rat_v3_39um" : {
         "path": "/app/atlases/pynutil-waxholm_atlases/waxholm_v3.01.nrrd",
-        "labels": "/app/atlases/pynutil-waxholm_atlases/waxholm_v3.01.label",
+        "labels" : "/app/atlases/pynutil-waxholm_atlases/waxholm_v3.01.label",
         "resolution": "39um",
-        "name": "Waxholm Space Atlas of the Sprague Dawley rat v4",
-    },
-    "WHS_SD_Rat_v4_39um": {
+        "name" : "Waxholm Space Atlas of the Sprague Dawley rat v4"
+    }, 
+    "WHS_SD_Rat_v4_39um" : {
         "path": "/app/atlases/pynutil-waxholm_atlases/waxholm_v4.01.nrrd",
-        "labels": "/app/atlases/pynutil-waxholm_atlases/waxholm_v4.01.label",
+        "labels" : "/app/atlases/pynutil-waxholm_atlases/waxholm_v4.01.label",
         "resolution": "39um",
-        "name": "Waxholm Space Atlas of the Sprague Dawley rat v3",
+        "name" : "Waxholm Space Atlas of the Sprague Dawley rat v3"
     },
 }
 
@@ -52,55 +52,62 @@ app = FastAPI()
 @app.router.get("/")
 def root():
     return {"message": "Welcome to the Nutil API!"}
-
-
-@app.get("/atlases")
+    
+@app.get("/atlases" )
 def get_atlases():
     """
     Returns a list of available atlases with their details.
     """
     return atlas_configurations
 
-
 @app.post("/schedule-task")
 def schedule_task(request: NutilRequest):
+
+    # Check who is calling
+
+
+
+    # Schedule to the queue
     task_id = str(uuid.uuid4())
+
+    # Looking up the preset configurations for the atlas
+    # The nrrd lives in the temp storage of the worker pod
     task_info = {
         "task_id": task_id,
         "segmentation_path": request.segmentation_path,
         "alignment_json_path": request.alignment_json_path,
-        "colour": json.dumps(request.colour),
+        "colour": request.colour,
         "atlas_path": atlas_configurations[request.atlas_name]["path"],
         "label_path": atlas_configurations[request.atlas_name]["labels"],
         "upload_to": request.output_path,
         "token": request.token,
         "status": "scheduled",
-        "message": "Task has been scheduled successfully.",
+        "message": "Task has been scheduled successfully."
     }
-    # Store the task metadata in a hash
-    redis.hset(f"nutil_task:{task_id}", mapping=task_info)
-    # Push the task id to the queue
-    redis.rpush("nutil_tasks_queue", task_id)
-    return {"message": "Task scheduled successfully.", "task_id": task_id}
 
+    # Store the task in Redis
+    redis.rpush('nutil_tasks', task_info)
+
+    return {"message": "Task scheduled successfully.", 
+            "task_id": task_id}
 
 @app.get("/task-status/{task_id}")
 def get_task(task_id: str):
-    task_data = redis.hgetall(f"nutil_task:{task_id}")
-    if not task_data:
-        return {"message": "Task not found."}
-    return {"status": task_data.get("status"), 
-            "message": task_data.get("message"), 
-            "task_id": task_id}
-
+    """
+    Returns the status of a specific task by its ID.
+    """
+    tasks = redis.lrange('nutil_tasks', 0, -1)
+    for task in tasks:
+        task_data = task.decode('utf-8')
+        if task_data['task_id'] == task_id:
+            return {"task": task_data}
+    
+    return {"message": "Task not found."}
 
 @app.get("/all-tasks")
 def get_all_tasks():
-    # Find all keys for tasks
-    keys = redis.keys("nutil_task:*")
-    tasks = [redis.hgetall(key) for key in keys]
-    return {"tasks": tasks}
-
+    tasks = redis.lrange('nutil_tasks', 0, -1)
+    return {"tasks": [task.decode('utf-8') for task in tasks]}
 
 # TODO Add download for images and json
 # TODO import the utils
