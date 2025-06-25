@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import struct
 import cv2
+import os
 from .generate_target_slice import generate_target_slice
 from .visualign_deformations import transform_vec
 
@@ -82,12 +83,18 @@ def pixel_count_per_region(
         with_damage (bool, optional): Track damage counts if True.
 
     Returns:
-        DataFrame: Summed counts per region.
-    """
+        DataFrame: Summed counts per region.    """
     with_hemi = None not in current_points_hemi
     counts_per_label = create_base_counts_dict(
         with_hemisphere=with_hemi, with_damage=with_damage
     )
+
+    # Ensure arrays are boolean and compatible for bitwise operations
+    current_points_undamaged = np.asarray(current_points_undamaged, dtype=bool)
+    current_centroids_undamaged = np.asarray(current_centroids_undamaged, dtype=bool)
+    if with_hemi:
+        current_points_hemi = np.asarray(current_points_hemi)
+        current_centroids_hemi = np.asarray(current_centroids_hemi)
 
     if with_hemi and with_damage:
         (
@@ -477,19 +484,7 @@ def read_seg_file(file):
     return image
 
 
-def rescale_image(image, rescaleXY):
-    """
-    Rescales an image to the specified dimensions.
 
-    Args:
-        image (ndarray): Input image array.
-        rescaleXY (tuple): (width, height) as new size.
-
-    Returns:
-        ndarray: The rescaled image.
-    """
-    w, h = rescaleXY
-    return cv2.resize(image, (h, w), interpolation=cv2.INTER_NEAREST)
 
 
 def assign_labels_to_image(image, labelfile):
@@ -592,7 +587,14 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
         DataFrame: Pixel counts grouped by label.
         ndarray: Scaled label map of the image.
     """
-    scale_factor = calculate_scale_factor(image, rescaleXY)
+    # Calculate scale factor inline
+    if rescaleXY:
+        image_shapeY, image_shapeX = image.shape[0], image.shape[1]
+        image_pixels = image_shapeY * image_shapeX
+        seg_pixels = rescaleXY[0] * rescaleXY[1]
+        scale_factor = seg_pixels / image_pixels
+    else:
+        scale_factor = False
     df_area_per_label = pd.DataFrame(columns=["idx"])
     if hemi_mask is not None:
         hemi_mask = cv2.resize(
@@ -700,8 +702,6 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
         target_slice = generate_target_slice(image_vector, volume)
         # Convert to uint8 as requested.
         # Note: If target_slice values are not already in the 0-255 range (e.g., floats 0.0-1.0),
-        # appropriate scaling (e.g., `* 255`) and/or clamping (e.g., `np.clip`)
-        # should be applied before this cast to avoid data loss or unexpected results.
         image = target_slice.astype(np.uint8)
     elif file.endswith(".seg"):  # Changed image_path to file
         image = read_seg_file(file)
@@ -715,20 +715,87 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
     return image
 
 
-def calculate_scale_factor(image, rescaleXY):
+def generate_atlas_visualization(atlas_map, atlas_labels, points, centroids, output_path, slice_name="slice"):
     """
-    Computes a factor for resizing if needed.
-
+    Generates a visualization showing atlas regions in their colors with detected objects overlaid.
+    
     Args:
-        image (ndarray): Original image array.
-        rescaleXY (tuple): (width, height) for potential resizing.
-
-    Returns:
-        float or bool: Scale factor or False if not applicable.
+        atlas_map (ndarray): 2D array with region IDs for each pixel
+        atlas_labels (DataFrame): Contains region info with idx, name, r, g, b columns
+        points (ndarray): Array of point coordinates (y, x)
+        centroids (ndarray): Array of centroid coordinates (y, x) 
+        output_path (str): Directory to save the output image
+        slice_name (str): Name for the output file
     """
-    if rescaleXY:
-        image_shapeY, image_shapeX = image.shape[0], image.shape[1]
-        image_pixels = image_shapeY * image_shapeX
-        seg_pixels = rescaleXY[0] * rescaleXY[1]
-        return seg_pixels / image_pixels
-    return False
+    import os
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_path, exist_ok=True)
+    
+    height, width = atlas_map.shape
+    
+    # Create colored atlas image
+    colored_atlas = np.zeros((height, width, 3), dtype=np.uint8)
+    
+    # Fill regions with their atlas colors
+    for _, row in atlas_labels.iterrows():
+        region_mask = atlas_map == row['idx']
+        colored_atlas[region_mask] = [row['b'], row['g'], row['r']]  # BGR format
+    
+    # Overlay detected points (small green circles)
+    if points is not None and len(points) > 0:
+        for point in points:
+            y, x = int(point[0]), int(point[1])
+            if 0 <= y < height and 0 <= x < width:
+                cv2.circle(colored_atlas, (x, y), 1, (0, 255, 0), -1)  # Green filled circle
+    
+    # Overlay centroids (larger blue circles with white outline)
+    if centroids is not None and len(centroids) > 0:
+        for centroid in centroids:
+            y, x = int(centroid[0]), int(centroid[1])
+            if 0 <= y < height and 0 <= x < width:
+                cv2.circle(colored_atlas, (x, y), 3, (255, 255, 255), 1)  # White outline
+                cv2.circle(colored_atlas, (x, y), 2, (255, 0, 0), -1)     # Blue filled center
+    
+    # Save the visualization
+    output_file = os.path.join(output_path, f"{slice_name}_atlas_visualization.png")
+    cv2.imwrite(output_file, colored_atlas)
+    print(f"Saved atlas visualization: {output_file}")
+    
+    return output_file
+
+
+def generate_slice_visualizations(atlas_maps, atlas_labels, points_list, centroids_list, 
+                                segmentations, output_path):
+    """
+    Generates visualizations for all slices in the analysis.
+    
+    Args:
+        atlas_maps (list): List of atlas maps for each slice
+        atlas_labels (DataFrame): Atlas region labels and colors
+        points_list (list): List of point arrays for each slice
+        centroids_list (list): List of centroid arrays for each slice
+        segmentations (list): List of segmentation file paths
+        output_path (str): Directory to save visualizations
+    """
+    visualization_files = []
+    
+    for i, (atlas_map, points, centroids, seg_path) in enumerate(
+        zip(atlas_maps, points_list, centroids_list, segmentations)):
+        
+        # Extract slice number from segmentation filename
+        slice_name = os.path.splitext(os.path.basename(seg_path))[0]
+        
+        # Generate visualization for this slice
+        if atlas_map is not None and atlas_map.size > 0:
+            viz_file = generate_atlas_visualization(
+                atlas_map, atlas_labels, points, centroids, output_path, slice_name
+            )
+            visualization_files.append(viz_file)
+        else:
+            print(f"Skipping visualization for {slice_name} - empty atlas map")
+    
+    return visualization_files
+
+
+

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from ..utils.read_and_write import load_quint_json
-from .counting_and_load import flat_to_dataframe, rescale_image, load_image
+from .counting_and_load import flat_to_dataframe, load_image
 from .generate_target_slice import generate_target_slice
 from .visualign_deformations import triangulate
 import cv2
@@ -103,47 +103,39 @@ def create_damage_mask(section, grid_spacing):
 
 
 def folder_to_atlas_space(
-    folder,
-    quint_alignment,
-    atlas_labels,
-    pixel_id=[0, 0, 0],
-    non_linear=True,
-    object_cutoff=0,
-    atlas_volume=None,
-    hemi_map=None,
-    use_flat=False,
-    apply_damage_mask=True,
-):
-    """
-    Processes all segmentation files in a folder, mapping each one to atlas space.
-
-    Args:
-        folder (str): Path to segmentation files.
-        quint_alignment (str): Path to alignment JSON.
-        atlas_labels (DataFrame): DataFrame with atlas labels.
-        pixel_id (list, optional): Pixel color to match.
-        non_linear (bool, optional): Apply non-linear transform.
-        object_cutoff (int, optional): Minimum object size.
-        atlas_volume (ndarray, optional): Atlas volume data.
-        hemi_map (ndarray, optional): Hemisphere mask data.
-        use_flat (bool, optional): If True, load flat files.
-        apply_damage_mask (bool, optional): If True, apply damage mask.
-
-    Returns:
-        tuple: Various arrays and lists containing transformed coordinates and labels.
-    """
+    folder: str,
+    quint_alignment: str,
+    atlas_labels: pd.DataFrame,
+    pixel_id: list[int] = [0, 0, 0],
+    non_linear: bool = True,
+    object_cutoff: int = 0,
+    atlas_volume: np.ndarray | None = None,
+    hemi_map: np.ndarray | None = None,
+    use_flat: bool = False,
+    apply_damage_mask: bool = True,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    list[pd.DataFrame],
+    list[int],
+    list[int],
+    list[str],
+    np.ndarray,
+    np.ndarray,
+]:
     quint_json = load_quint_json(quint_alignment)
-    slices = quint_json["slices"]
-    if apply_damage_mask and "gridspacing" in quint_json:
-        gridspacing = quint_json["gridspacing"]
-    else:
-        gridspacing = None
+    slices = list(quint_json["slices"])  # shallow copy to avoid mutation
+    gridspacing = quint_json.get("gridspacing") if apply_damage_mask else None
     if not apply_damage_mask:
-        for slice in slices:
-            if "grid" in slice:
-                slice.pop("grid")
+        for s in slices:
+            s.pop("grid", None)
     segmentations = get_segmentations(folder)
     flat_files, flat_file_nrs = get_flat_files(folder, use_flat)
+    n = len(segmentations)
     region_areas_list = [
         pd.DataFrame(
             {
@@ -158,34 +150,29 @@ def folder_to_atlas_space(
                 "area_fraction": [],
             }
         )
-    ] * len(segmentations)
-    points_list = [np.array([])] * len(segmentations)
-    points_labels = [np.array([])] * len(segmentations)
-    centroids_list = [np.array([])] * len(segmentations)
-    centroids_labels = [np.array([])] * len(segmentations)
-    per_point_undamaged_list = [np.array([])] * len(segmentations)
-    per_centroid_undamaged_list = [np.array([])] * len(segmentations)
-    points_hemi_labels = [np.array([])] * len(segmentations)
-    centroids_hemi_labels = [np.array([])] * len(segmentations)
-
-    # Process each segmentation sequentially instead of using threads
+        for _ in range(n)
+    ]
+    points_list = [np.array([]) for _ in range(n)]
+    points_labels = [np.array([]) for _ in range(n)]
+    centroids_list = [np.array([]) for _ in range(n)]
+    centroids_labels = [np.array([]) for _ in range(n)]
+    per_point_undamaged_list = [np.array([]) for _ in range(n)]
+    per_centroid_undamaged_list = [np.array([]) for _ in range(n)]
+    points_hemi_labels = [np.array([]) for _ in range(n)]
+    centroids_hemi_labels = [np.array([]) for _ in range(n)]
     for index, segmentation_path in enumerate(segmentations):
         seg_nr = int(number_sections([segmentation_path])[0])
-        current_slice_index = np.where([s["nr"] == seg_nr for s in slices])
-        if len(current_slice_index[0]) == 0:
-            print("segmentation file does not exist in alignment json:")
-            print(segmentation_path)
+        idxs = [i for i, s in enumerate(slices) if s["nr"] == seg_nr]
+        if not idxs:
             region_areas_list[index] = pd.DataFrame({"idx": []})
             continue
-        current_slice = slices[current_slice_index[0][0]]
-        if current_slice["anchoring"] == []:
+        current_slice = slices[idxs[0]]
+        if not current_slice.get("anchoring"):
             region_areas_list[index] = pd.DataFrame({"idx": []})
             continue
         current_flat = get_current_flat_file(
             seg_nr, flat_files, flat_file_nrs, use_flat
         )
-
-        # Call the function directly instead of creating a thread
         segmentation_to_atlas_space(
             current_slice,
             segmentation_path,
@@ -209,19 +196,17 @@ def folder_to_atlas_space(
             use_flat,
             gridspacing,
         )
-
-    # Process results
     (
         points,
         centroids,
-        points_labels,
-        centroids_labels,
-        points_hemi_labels,
-        centroids_hemi_labels,
+        points_labels_arr,
+        centroids_labels_arr,
+        points_hemi_labels_arr,
+        centroids_hemi_labels_arr,
         points_len,
         centroids_len,
-        per_point_undamaged_list,
-        per_centroid_undamaged_list,
+        per_point_undamaged_arr,
+        per_centroid_undamaged_arr,
     ) = process_results(
         points_list,
         centroids_list,
@@ -235,16 +220,16 @@ def folder_to_atlas_space(
     return (
         points,
         centroids,
-        points_labels,
-        centroids_labels,
-        points_hemi_labels,
-        centroids_hemi_labels,
+        points_labels_arr,
+        centroids_labels_arr,
+        points_hemi_labels_arr,
+        centroids_hemi_labels_arr,
         region_areas_list,
         points_len,
         centroids_len,
         segmentations,
-        per_point_undamaged_list,
-        per_centroid_undamaged_list,
+        per_point_undamaged_arr,
+        per_centroid_undamaged_arr,
     )
 
 
@@ -264,7 +249,7 @@ def load_segmentation(segmentation_path: str):
         return cv2.imread(segmentation_path)
 
 
-def detect_pixel_id(segmentation: np.array):
+def detect_pixel_id(segmentation: np.ndarray):
     """
     Infers pixel color from the first non-background region.
 
@@ -331,7 +316,7 @@ def segmentation_to_atlas_space(
     flat_file_atlas=None,
     pixel_id="auto",
     non_linear=True,
-    points_list=None,
+    points_list=np.ndarray([]),
     centroids_list=None,
     points_labels=None,
     centroids_labels=None,
@@ -373,12 +358,10 @@ def segmentation_to_atlas_space(
         use_flat (bool, optional): Indicates use of flat files.
         grid_spacing (int, optional): Spacing value for damage mask.
 
-    Returns:
-        None
-    """
+    Returns:        None"""
     segmentation = load_segmentation(segmentation_path)
-    # Use BGR for red (OpenCV default): [0, 0, 255]
-    pixel_id = np.array([0, 0, 255], dtype=np.uint8)
+
+    pixel_id = np.array(pixel_id, dtype=np.uint8)
     seg_height, seg_width = segmentation.shape[:2]
     reg_height, reg_width = slice_dict["height"], slice_dict["width"]
     triangulation = get_triangulation(slice_dict, reg_width, reg_height, non_linear)
@@ -402,7 +385,9 @@ def segmentation_to_atlas_space(
         triangulation,
         damage_mask,
     )
-    atlas_map = rescale_image(atlas_map, (reg_height, reg_width))
+    atlas_map = cv2.resize(
+        atlas_map, (reg_width, reg_height), interpolation=cv2.INTER_NEAREST
+    )
     y_scale, x_scale = transform_to_registration(
         seg_width, seg_height, reg_width, reg_height
     )
@@ -411,12 +396,20 @@ def segmentation_to_atlas_space(
     centroids, scaled_centroidsX, scaled_centroidsY = get_centroids(
         segmentation, pixel_id, y_scale, x_scale, object_cutoff, tolerance=10
     )
-    scaled_y, scaled_x = get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10)
+    scaled_y, scaled_x = get_scaled_pixels(
+        segmentation, pixel_id, y_scale, x_scale, tolerance=10
+    )
+
+    del segmentation
 
     # Robustly handle missing color matches
     # This for some reason keeps failing with some segmentations
-    if (scaled_y is None or scaled_x is None or
-        scaled_centroidsX is None or scaled_centroidsY is None):
+    if (
+        scaled_y is None
+        or scaled_x is None
+        or scaled_centroidsX is None
+        or scaled_centroidsY is None
+    ):
         # Set all outputs to empty arrays and return early
         points_list[index] = np.array([])
         centroids_list[index] = np.array([])
@@ -437,10 +430,18 @@ def segmentation_to_atlas_space(
         per_point_labels = np.array([])
 
     if scaled_centroidsY is not None and scaled_centroidsX is not None:
-        per_centroid_labels = atlas_map[
-            np.round(scaled_centroidsY).astype(int),
-            np.round(scaled_centroidsX).astype(int),
-        ]
+        # Region-aware centroid assignment: assign centroids based on majority region of their pixels
+        per_centroid_labels = get_region_aware_centroid_labels(
+            segmentation_path,
+            pixel_id,
+            atlas_map,
+            y_scale,
+            x_scale,
+            object_cutoff,
+            tolerance=10,
+        )
+        if per_centroid_labels is None:
+            per_centroid_labels = np.array([])
     else:
         per_centroid_labels = np.array([])
 
@@ -502,6 +503,10 @@ def segmentation_to_atlas_space(
         reg_height,
         reg_width,
     )
+
+    del atlas_map
+    if hemi_mask is not None:
+        del hemi_mask
     points_list[index] = np.array(points if points is not None else [])
     centroids_list[index] = np.array(centroids if centroids is not None else [])
     region_areas_list[index] = region_areas
@@ -539,7 +544,9 @@ def get_triangulation(slice_dict, reg_width, reg_height, non_linear):
     return None
 
 
-def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10):
+def get_centroids(
+    segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10
+):
     """
     Finds object centroids for a given pixel color and applies scaling, with tolerance.
 
@@ -558,7 +565,10 @@ def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tol
     # print("Unique colors in segmentation:", unique_colors)
 
     # Use tolerance for color matching
-    binary_seg = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
+    binary_seg = np.all(
+        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
+        axis=2,
+    )
     centroids, area, coords = get_centroids_and_area(
         binary_seg, pixel_cut_off=object_cutoff
     )
@@ -585,9 +595,95 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
     Returns:
         tuple: (scaled_y, scaled_x)
     """
-    mask = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
+    mask = np.all(
+        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
+        axis=2,
+    )
     id_y, id_x = np.where(mask)
     if len(id_y) == 0:
         return None, None
     scaled_y, scaled_x = scale_positions(id_y, id_x, y_scale, x_scale)
     return scaled_y, scaled_x
+
+
+def get_region_aware_centroid_labels(
+    segmentation_path,
+    pixel_id,
+    atlas_map,
+    y_scale,
+    x_scale,
+    object_cutoff=0,
+    tolerance=10,
+):
+    """
+    Assigns centroid labels based on the region that contains the majority of each object's pixels.
+
+    Args:
+        segmentation_path (str): Path to segmentation file
+        pixel_id (array): Target pixel color
+        atlas_map (ndarray): Atlas region map
+        y_scale (float): Vertical scaling factor
+        x_scale (float): Horizontal scaling factor
+        object_cutoff (int): Minimum object size
+        tolerance (int): Color matching tolerance
+
+    Returns:
+        ndarray: Region labels for each centroid based on majority pixel assignment
+    """
+    # Load segmentation again to get individual objects
+    segmentation = load_segmentation(segmentation_path)
+    if segmentation is None:
+        return None
+
+    # Create binary mask for target pixels
+    binary_seg = np.all(
+        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
+        axis=2,
+    )
+
+    # Get labeled objects
+    labels = measure.label(binary_seg)
+    objects_info = measure.regionprops(labels)
+    objects_info = [obj for obj in objects_info if obj.area > object_cutoff]
+
+    if len(objects_info) == 0:
+        return np.array([])
+
+    centroid_labels = []
+
+    for obj in objects_info:
+        # Get all pixel coordinates for this object
+        obj_coords = obj.coords  # Shape: (n_pixels, 2) in (row, col) format
+        obj_y = obj_coords[:, 0]
+        obj_x = obj_coords[:, 1]
+
+        # Scale coordinates to registration space
+        scaled_obj_y, scaled_obj_x = scale_positions(obj_y, obj_x, y_scale, x_scale)
+
+        # Get atlas labels for all pixels in this object
+        # Ensure coordinates are within atlas_map bounds
+        valid_mask = (
+            (np.round(scaled_obj_y).astype(int) >= 0)
+            & (np.round(scaled_obj_y).astype(int) < atlas_map.shape[0])
+            & (np.round(scaled_obj_x).astype(int) >= 0)
+            & (np.round(scaled_obj_x).astype(int) < atlas_map.shape[1])
+        )
+
+        if not np.any(valid_mask):
+            # If no valid coordinates, assign to background (0)
+            centroid_labels.append(0)
+            continue
+
+        valid_y = np.round(scaled_obj_y[valid_mask]).astype(int)
+        valid_x = np.round(scaled_obj_x[valid_mask]).astype(int)
+
+        # Get region labels for valid pixels
+        pixel_labels = atlas_map[valid_y, valid_x]
+
+        # Find the majority region (most frequent label)
+        unique_labels, counts = np.unique(pixel_labels, return_counts=True)
+        majority_label = unique_labels[np.argmax(counts)]
+
+        centroid_labels.append(majority_label)
+
+    return np.array(centroid_labels)

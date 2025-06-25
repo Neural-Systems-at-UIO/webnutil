@@ -17,7 +17,7 @@ nt = Nutil(
     alignment_json=os.path.join(
         script_dir, "./tests/test_data/real_data/aba_mouse_ccfv3_2017_25um_2025-04-11_07-50-43.json"
     ),
-    colour=[255, 0, 0],
+    colour=[0, 0, 255],
     atlas_path=os.path.join(
         script_dir,
         "./tests/test_data/allen_mouse_2017_atlas/annotation_25_reoriented_2017.nrrd",

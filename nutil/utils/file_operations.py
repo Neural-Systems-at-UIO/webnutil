@@ -1,6 +1,39 @@
 import os
 import json
 from .read_and_write import write_hemi_points_to_meshview
+from typing import List
+import shutil
+
+
+def ensure_dir_exists(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def remove_file(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def remove_dir(path: str) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def list_files(path: str, ext: str = "") -> List[str]:
+    return [
+        f
+        for f in os.listdir(path)
+        if os.path.isfile(os.path.join(path, f)) and (f.endswith(ext) if ext else True)
+    ]
+
+
+def copy_file(src: str, dst: str) -> None:
+    shutil.copy2(src, dst)
+
+
+def move_file(src: str, dst: str) -> None:
+    shutil.move(src, dst)
 
 
 def save_analysis_output(
@@ -32,7 +65,6 @@ def save_analysis_output(
 
     Parameters
     ----------
-    # ...existing code...
     output_folder : str
         The folder where the output will be saved.
     segmentation_folder : str, optional
@@ -51,11 +83,11 @@ def save_analysis_output(
         The path to the settings file that was used (default is None).
     """
     # Create the output folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
-    os.makedirs(f"{output_folder}/whole_series_report", exist_ok=True)
-    os.makedirs(f"{output_folder}/per_section_meshview", exist_ok=True)
-    os.makedirs(f"{output_folder}/per_section_reports", exist_ok=True)
-    os.makedirs(f"{output_folder}/whole_series_meshview", exist_ok=True)
+    ensure_dir_exists(output_folder)
+    ensure_dir_exists(f"{output_folder}/whole_series_report")
+    ensure_dir_exists(f"{output_folder}/per_section_meshview")
+    ensure_dir_exists(f"{output_folder}/per_section_reports")
+    ensure_dir_exists(f"{output_folder}/whole_series_meshview")
     # Filter out rows where 'region_area' is 0 in label_df
     # if label_df is not None and "region_area" in label_df.columns:
     #     label_df = label_df[label_df["region_area"] != 0]

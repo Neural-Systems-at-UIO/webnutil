@@ -114,7 +114,7 @@ def get_segmentations(folder):
     return segmentations
 
 
-def get_flat_files(folder, use_flat=False):
+def get_flat_files(folder: str, use_flat=False) -> tuple:
     """
     Retrieves flat file paths from the given folder.
 
@@ -137,7 +137,7 @@ def get_flat_files(folder, use_flat=False):
     return [], []
 
 
-def get_current_flat_file(seg_nr, flat_files, flat_file_nrs, use_flat):
+def get_current_flat_file(seg_nr: int, flat_files, flat_file_nrs, use_flat):
     """
     Determines the correct flat file for a given section number.
 
