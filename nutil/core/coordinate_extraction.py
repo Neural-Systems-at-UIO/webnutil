@@ -264,7 +264,7 @@ def load_segmentation(segmentation_path: str):
         return cv2.imread(segmentation_path)
 
 
-def detect_pixel_id(segmentation: np.array):
+def detect_pixel_id(segmentation: np.ndarray):
     """
     Infers pixel color from the first non-background region.
 
@@ -331,7 +331,7 @@ def segmentation_to_atlas_space(
     flat_file_atlas=None,
     pixel_id="auto",
     non_linear=True,
-    points_list=None,
+    points_list=np.ndarray([]),
     centroids_list=None,
     points_labels=None,
     centroids_labels=None,
@@ -373,8 +373,7 @@ def segmentation_to_atlas_space(
         use_flat (bool, optional): Indicates use of flat files.
         grid_spacing (int, optional): Spacing value for damage mask.
 
-    Returns:
-        None    """
+    Returns:        None"""
     segmentation = load_segmentation(segmentation_path)
 
     pixel_id = np.array(pixel_id, dtype=np.uint8)
@@ -401,7 +400,9 @@ def segmentation_to_atlas_space(
         triangulation,
         damage_mask,
     )
-    atlas_map = cv2.resize(atlas_map, (reg_width, reg_height), interpolation=cv2.INTER_NEAREST)
+    atlas_map = cv2.resize(
+        atlas_map, (reg_width, reg_height), interpolation=cv2.INTER_NEAREST
+    )
     y_scale, x_scale = transform_to_registration(
         seg_width, seg_height, reg_width, reg_height
     )
@@ -410,12 +411,20 @@ def segmentation_to_atlas_space(
     centroids, scaled_centroidsX, scaled_centroidsY = get_centroids(
         segmentation, pixel_id, y_scale, x_scale, object_cutoff, tolerance=10
     )
-    scaled_y, scaled_x = get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10)
+    scaled_y, scaled_x = get_scaled_pixels(
+        segmentation, pixel_id, y_scale, x_scale, tolerance=10
+    )
+
+    del segmentation
 
     # Robustly handle missing color matches
     # This for some reason keeps failing with some segmentations
-    if (scaled_y is None or scaled_x is None or
-        scaled_centroidsX is None or scaled_centroidsY is None):
+    if (
+        scaled_y is None
+        or scaled_x is None
+        or scaled_centroidsX is None
+        or scaled_centroidsY is None
+    ):
         # Set all outputs to empty arrays and return early
         points_list[index] = np.array([])
         centroids_list[index] = np.array([])
@@ -501,6 +510,10 @@ def segmentation_to_atlas_space(
         reg_height,
         reg_width,
     )
+
+    del atlas_map
+    if hemi_mask is not None:
+        del hemi_mask
     points_list[index] = np.array(points if points is not None else [])
     centroids_list[index] = np.array(centroids if centroids is not None else [])
     region_areas_list[index] = region_areas
@@ -538,7 +551,9 @@ def get_triangulation(slice_dict, reg_width, reg_height, non_linear):
     return None
 
 
-def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10):
+def get_centroids(
+    segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10
+):
     """
     Finds object centroids for a given pixel color and applies scaling, with tolerance.
 
@@ -557,7 +572,10 @@ def get_centroids(segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tol
     # print("Unique colors in segmentation:", unique_colors)
 
     # Use tolerance for color matching
-    binary_seg = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
+    binary_seg = np.all(
+        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
+        axis=2,
+    )
     centroids, area, coords = get_centroids_and_area(
         binary_seg, pixel_cut_off=object_cutoff
     )
@@ -584,7 +602,10 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
     Returns:
         tuple: (scaled_y, scaled_x)
     """
-    mask = np.all(np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance, axis=2)
+    mask = np.all(
+        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
+        axis=2,
+    )
     id_y, id_x = np.where(mask)
     if len(id_y) == 0:
         return None, None
