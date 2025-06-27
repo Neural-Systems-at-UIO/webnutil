@@ -83,7 +83,7 @@ def pixel_count_per_region(
         with_damage (bool, optional): Track damage counts if True.
 
     Returns:
-        DataFrame: Summed counts per region.    """
+        DataFrame: Summed counts per region."""
     with_hemi = None not in current_points_hemi
     counts_per_label = create_base_counts_dict(
         with_hemisphere=with_hemi, with_damage=with_damage
@@ -484,9 +484,6 @@ def read_seg_file(file):
     return image
 
 
-
-
-
 def assign_labels_to_image(image, labelfile):
     """
     Assigns atlas or region labels to an image array.
@@ -713,89 +710,3 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
         image = warp_image(image, triangulation, rescaleXY)
 
     return image
-
-
-def generate_atlas_visualization(atlas_map, atlas_labels, points, centroids, output_path, slice_name="slice"):
-    """
-    Generates a visualization showing atlas regions in their colors with detected objects overlaid.
-    
-    Args:
-        atlas_map (ndarray): 2D array with region IDs for each pixel
-        atlas_labels (DataFrame): Contains region info with idx, name, r, g, b columns
-        points (ndarray): Array of point coordinates (y, x)
-        centroids (ndarray): Array of centroid coordinates (y, x) 
-        output_path (str): Directory to save the output image
-        slice_name (str): Name for the output file
-    """
-    import os
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(output_path, exist_ok=True)
-    
-    height, width = atlas_map.shape
-    
-    # Create colored atlas image
-    colored_atlas = np.zeros((height, width, 3), dtype=np.uint8)
-    
-    # Fill regions with their atlas colors
-    for _, row in atlas_labels.iterrows():
-        region_mask = atlas_map == row['idx']
-        colored_atlas[region_mask] = [row['b'], row['g'], row['r']]  # BGR format
-    
-    # Overlay detected points (small green circles)
-    if points is not None and len(points) > 0:
-        for point in points:
-            y, x = int(point[0]), int(point[1])
-            if 0 <= y < height and 0 <= x < width:
-                cv2.circle(colored_atlas, (x, y), 1, (0, 255, 0), -1)  # Green filled circle
-    
-    # Overlay centroids (larger blue circles with white outline)
-    if centroids is not None and len(centroids) > 0:
-        for centroid in centroids:
-            y, x = int(centroid[0]), int(centroid[1])
-            if 0 <= y < height and 0 <= x < width:
-                cv2.circle(colored_atlas, (x, y), 3, (255, 255, 255), 1)  # White outline
-                cv2.circle(colored_atlas, (x, y), 2, (255, 0, 0), -1)     # Blue filled center
-    
-    # Save the visualization
-    output_file = os.path.join(output_path, f"{slice_name}_atlas_visualization.png")
-    cv2.imwrite(output_file, colored_atlas)
-    print(f"Saved atlas visualization: {output_file}")
-    
-    return output_file
-
-
-def generate_slice_visualizations(atlas_maps, atlas_labels, points_list, centroids_list, 
-                                segmentations, output_path):
-    """
-    Generates visualizations for all slices in the analysis.
-    
-    Args:
-        atlas_maps (list): List of atlas maps for each slice
-        atlas_labels (DataFrame): Atlas region labels and colors
-        points_list (list): List of point arrays for each slice
-        centroids_list (list): List of centroid arrays for each slice
-        segmentations (list): List of segmentation file paths
-        output_path (str): Directory to save visualizations
-    """
-    visualization_files = []
-    
-    for i, (atlas_map, points, centroids, seg_path) in enumerate(
-        zip(atlas_maps, points_list, centroids_list, segmentations)):
-        
-        # Extract slice number from segmentation filename
-        slice_name = os.path.splitext(os.path.basename(seg_path))[0]
-        
-        # Generate visualization for this slice
-        if atlas_map is not None and atlas_map.size > 0:
-            viz_file = generate_atlas_visualization(
-                atlas_map, atlas_labels, points, centroids, output_path, slice_name
-            )
-            visualization_files.append(viz_file)
-        else:
-            print(f"Skipping visualization for {slice_name} - empty atlas map")
-    
-    return visualization_files
-
-
-
