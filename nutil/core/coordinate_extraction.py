@@ -16,7 +16,6 @@ from .utils import (
     get_flat_files,
     get_segmentations,
     number_sections,
-    find_matching_pixels,
     scale_positions,
     process_results,
     get_current_flat_file,
@@ -367,6 +366,11 @@ def segmentation_to_atlas_space(
     triangulation = get_triangulation(slice_dict, reg_width, reg_height, non_linear)
     if "grid" in slice_dict:
         damage_mask = create_damage_mask(slice_dict, grid_spacing)
+        damage_mask = cv2.resize(
+            damage_mask.astype(np.uint8),
+            (seg_width, seg_height),
+            interpolation=cv2.INTER_NEAREST,
+        ).astype(bool)
     else:
         damage_mask = None
     if hemi_map is not None:
@@ -385,7 +389,7 @@ def segmentation_to_atlas_space(
         triangulation,
         damage_mask,
     )
-    atlas_map = cv2.resize(
+    scaled_atlas_map = cv2.resize(
         atlas_map, (reg_width, reg_height), interpolation=cv2.INTER_NEAREST
     )
     y_scale, x_scale = transform_to_registration(
@@ -393,7 +397,7 @@ def segmentation_to_atlas_space(
     )
     centroids, points = None, None
     scaled_centroidsX, scaled_centroidsY, scaled_x, scaled_y = None, None, None, None
-    # OPTIMIZED: Single-pass object detection and region assignment
+
     (
         centroids,
         scaled_centroidsX,
@@ -402,7 +406,13 @@ def segmentation_to_atlas_space(
         scaled_x,
         per_centroid_labels,
     ) = get_objects_and_assign_regions_optimized(
-        segmentation, pixel_id, atlas_map, y_scale, x_scale, object_cutoff, tolerance=10
+        segmentation,
+        pixel_id,
+        scaled_atlas_map,
+        y_scale,
+        x_scale,
+        object_cutoff,
+        tolerance=10,
     )
 
     del segmentation
@@ -414,7 +424,6 @@ def segmentation_to_atlas_space(
         or scaled_centroidsX is None
         or scaled_centroidsY is None
     ):
-        # Set all outputs to empty arrays and return early
         points_list[index] = np.array([])
         centroids_list[index] = np.array([])
         region_areas_list[index] = pd.DataFrame()
@@ -428,7 +437,7 @@ def segmentation_to_atlas_space(
 
     # Assign point labels
     if scaled_y is not None and scaled_x is not None:
-        per_point_labels = atlas_map[
+        per_point_labels = scaled_atlas_map[
             np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
         ]
     else:
@@ -437,7 +446,7 @@ def segmentation_to_atlas_space(
     if damage_mask is not None:
         damage_mask = cv2.resize(
             damage_mask.astype(np.uint8),
-            (atlas_map.shape[::-1]),
+            (scaled_atlas_map.shape[::-1]),
             interpolation=cv2.INTER_NEAREST,
         ).astype(bool)
         per_point_undamaged = damage_mask[
@@ -453,7 +462,7 @@ def segmentation_to_atlas_space(
     if hemi_mask is not None:
         hemi_mask = cv2.resize(
             hemi_mask.astype(np.uint8),
-            (atlas_map.shape[::-1]),
+            (scaled_atlas_map.shape[::-1]),
             interpolation=cv2.INTER_NEAREST,
         )
 
@@ -493,7 +502,7 @@ def segmentation_to_atlas_space(
         reg_width,
     )
 
-    del atlas_map
+    del scaled_atlas_map
     if hemi_mask is not None:
         del hemi_mask
     points_list[index] = np.array(points if points is not None else [])
@@ -533,56 +542,6 @@ def get_triangulation(slice_dict, reg_width, reg_height, non_linear):
     return None
 
 
-def get_centroids(
-    segmentation, pixel_id, y_scale, x_scale, object_cutoff=0, tolerance=10
-):
-    """
-    DEPRECATED: Use get_objects_and_assign_regions_optimized() instead.
-
-    This function is kept for backward compatibility but is inefficient.
-    The new optimized function does everything in a single pass.
-
-    Finds object centroids for a given pixel color and applies scaling, with tolerance.
-
-    Args:
-        segmentation (ndarray): Segmentation array.
-        pixel_id (int): Pixel color to match.
-        y_scale (float): Vertical scaling factor.
-        x_scale (float): Horizontal scaling factor.
-        object_cutoff (int, optional): Minimum object size.
-
-    Returns:
-        tuple: (centroids, scaled_centroidsX, scaled_centroidsY)
-    """
-    import warnings
-
-    warnings.warn(
-        "get_centroids() is deprecated. Use get_objects_and_assign_regions_optimized() for better performance.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # Debug: print unique colors in the segmentation
-    # unique_colors = np.unique(segmentation.reshape(-1, segmentation.shape[2]), axis=0)
-    # print("Unique colors in segmentation:", unique_colors)
-
-    # Use tolerance for color matching
-    binary_seg = np.all(
-        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
-        axis=2,
-    )
-    centroids, area, coords = get_centroids_and_area(
-        binary_seg, pixel_cut_off=object_cutoff
-    )
-    if len(centroids) == 0:
-        return None, None, None
-    centroidsX = centroids[:, 1]
-    centroidsY = centroids[:, 0]
-    scaled_centroidsY, scaled_centroidsX = scale_positions(
-        centroidsY, centroidsX, y_scale, x_scale
-    )
-    return centroids, scaled_centroidsX, scaled_centroidsY
-
-
 def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
     """
     Retrieves pixel coordinates for a specified color and scales them, with tolerance.
@@ -605,106 +564,6 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
         return None, None
     scaled_y, scaled_x = scale_positions(id_y, id_x, y_scale, x_scale)
     return scaled_y, scaled_x
-
-
-def get_region_aware_centroid_labels(
-    segmentation_path,
-    pixel_id,
-    atlas_map,
-    y_scale,
-    x_scale,
-    object_cutoff=0,
-    tolerance=10,
-):
-    """
-    DEPRECATED: Use get_objects_and_assign_regions_optimized() instead.
-
-    This function is kept for backward compatibility but is inefficient as it
-    reloads and reprocesses the segmentation that was already processed.
-
-    Assigns centroid labels based on the region that contains the majority of each object's pixels.
-
-    Args:
-        segmentation_path (str): Path to segmentation file
-        pixel_id (array): Target pixel color
-        atlas_map (ndarray): Atlas region map
-        y_scale (float): Vertical scaling factor
-        x_scale (float): Horizontal scaling factor
-        object_cutoff (int): Minimum object size
-        tolerance (int): Color matching tolerance
-
-    Returns:
-        ndarray: Region labels for each centroid based on majority pixel assignment
-    """
-    import warnings
-
-    warnings.warn(
-        "get_region_aware_centroid_labels() is deprecated. "
-        "Use get_objects_and_assign_regions_optimized() for better performance.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # Load segmentation again to get individual objects
-    segmentation = load_segmentation(segmentation_path)
-    if segmentation is None:
-        return None
-
-    # Create binary mask for target pixels
-    # MEMORY FIX #1
-    binary_seg = np.all(
-        np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
-        axis=2,
-    )
-
-    # Get labeled objects
-    labels = measure.label(binary_seg)
-    objects_info = measure.regionprops(labels)
-    objects_info = [obj for obj in objects_info if obj.area > object_cutoff]
-
-    if len(objects_info) == 0:
-        return np.array([])
-
-    centroid_labels = []
-
-    for obj in objects_info:
-        # Get all pixel coordinates for this object
-        obj_coords = obj.coords  # Shape: (n_pixels, 2) in (row, col) format
-        obj_y = obj_coords[:, 0]
-        obj_x = obj_coords[:, 1]
-
-        # Scale coordinates to registration space
-        scaled_obj_y, scaled_obj_x = scale_positions(obj_y, obj_x, y_scale, x_scale)
-
-        # Get atlas labels for all pixels in this object
-        # Ensure coordinates are within atlas_map bounds
-        valid_mask = (
-            (np.round(scaled_obj_y).astype(int) >= 0)
-            & (np.round(scaled_obj_y).astype(int) < atlas_map.shape[0])
-            & (np.round(scaled_obj_x).astype(int) >= 0)
-            & (np.round(scaled_obj_x).astype(int) < atlas_map.shape[1])
-        )
-
-        if not np.any(valid_mask):
-            # If no valid coordinates, assign to background (0)
-            centroid_labels.append(0)
-            continue
-
-        valid_y = np.round(scaled_obj_y[valid_mask]).astype(int)
-        valid_x = np.round(scaled_obj_x[valid_mask]).astype(int)
-
-        # Get region labels for valid pixels
-        pixel_labels = atlas_map[valid_y, valid_x]
-        # print(    f"unique labels={np.unique(pixel_labels)}" )
-
-        # Find the majority region (most frequent label)
-        unique_labels, counts = np.unique(pixel_labels, return_counts=True)
-        majority_label = unique_labels[
-            np.argmax(counts)
-        ]  # eg. caudoputamen has 23 pixels as opposed to 3 pixels for the other region
-
-        centroid_labels.append(majority_label)
-
-    return np.array(centroid_labels)
 
 
 def get_objects_and_assign_regions_optimized(
@@ -755,7 +614,7 @@ def get_objects_and_assign_regions_optimized(
     # Extract centroids and assign regions
     centroids = []
     per_centroid_labels = []
-    # centroid_weights = []  # For visualization in meshview, like the scale slider
+    # centroid_weights = # For visualization in meshview, like the scale slider
 
     for obj in objects_info:
         # Get centroid

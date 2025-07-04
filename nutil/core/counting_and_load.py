@@ -584,12 +584,26 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
         DataFrame: Pixel counts grouped by label.
         ndarray: Scaled label map of the image.
     """
-    # Calculate scale factor inline
+    # If rescaleXY is set, resize image and masks to match
     if rescaleXY:
-        image_shapeY, image_shapeX = image.shape[0], image.shape[1]
-        image_pixels = image_shapeY * image_shapeX
-        seg_pixels = rescaleXY[0] * rescaleXY[1]
-        scale_factor = seg_pixels / image_pixels
+        image = cv2.resize(
+            image.astype(np.uint16),
+            (rescaleXY[0], rescaleXY[1]),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        if hemi_mask is not None:
+            hemi_mask = cv2.resize(
+                hemi_mask.astype(np.uint8),
+                (rescaleXY[0], rescaleXY[1]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+        if damage_mask is not None:
+            damage_mask = cv2.resize(
+                damage_mask.astype(np.uint8),
+                (rescaleXY[0], rescaleXY[1]),
+                interpolation=cv2.INTER_NEAREST,
+            ).astype(bool)
+        scale_factor = False  # No need to scale counts, image is resized
     else:
         scale_factor = False
     df_area_per_label = pd.DataFrame(columns=["idx"])
