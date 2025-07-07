@@ -483,16 +483,23 @@ def segmentation_to_atlas_space(
 
     # Check if the resize would create a huge array - if so, work at original resolution
     target_size = reg_height * reg_width * 4  # 4 bytes per uint32
+    atlas_at_original_resolution = False
     if target_size > 500 * 1024 * 1024:  # If larger than 500MB
+        atlas_at_original_resolution = True
         log_memory_usage(
             "large_resize_detected",
             message=f"Large resize detected: {reg_height}x{reg_width} = {target_size/1024/1024:.1f} MB, using original resolution",
         )
         scaled_atlas_map = atlas_map
-        # Adjust scaling factors
-        atlas_height, atlas_width = atlas_map.shape
-        y_scale = atlas_height / seg_height
-        x_scale = atlas_width / seg_width
+        # IMPORTANT: Still scale coordinates to registration resolution, not atlas resolution
+        # This ensures the coordinate transformation chain remains correct
+        y_scale, x_scale = transform_to_registration(
+            seg_width, seg_height, reg_width, reg_height
+        )
+        log_memory_usage(
+            "atlas_original_res",
+            message=f"Atlas kept at original resolution {atlas_map.shape}, but coordinates scaled to registration {reg_height}x{reg_width}",
+        )
     else:
         scaled_atlas_map = resize(
             atlas_map, (reg_height, reg_width), order=0, preserve_range=True
@@ -521,6 +528,9 @@ def segmentation_to_atlas_space(
         x_scale,
         object_cutoff,
         tolerance=10,
+        atlas_at_original_resolution=atlas_at_original_resolution,
+        reg_height=reg_height,
+        reg_width=reg_width,
     )
 
     log_memory_usage(
@@ -560,9 +570,33 @@ def segmentation_to_atlas_space(
 
     # Assign point labels
     if scaled_y is not None and scaled_x is not None:
-        per_point_labels = scaled_atlas_map[
-            np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
-        ]
+        if atlas_at_original_resolution:
+            # Map from registration space to atlas space for point assignment
+            atlas_height, atlas_width = scaled_atlas_map.shape
+            atlas_y_scale = atlas_height / reg_height
+            atlas_x_scale = atlas_width / reg_width
+            atlas_point_y = scaled_y * atlas_y_scale
+            atlas_point_x = scaled_x * atlas_x_scale
+
+            # Bounds checking
+            valid_mask = (
+                (np.round(atlas_point_y).astype(int) >= 0)
+                & (np.round(atlas_point_y).astype(int) < atlas_height)
+                & (np.round(atlas_point_x).astype(int) >= 0)
+                & (np.round(atlas_point_x).astype(int) < atlas_width)
+            )
+
+            if np.any(valid_mask):
+                valid_y = np.round(atlas_point_y[valid_mask]).astype(int)
+                valid_x = np.round(atlas_point_x[valid_mask]).astype(int)
+                per_point_labels = np.zeros(len(scaled_y), dtype=int)
+                per_point_labels[valid_mask] = scaled_atlas_map[valid_y, valid_x]
+            else:
+                per_point_labels = np.zeros(len(scaled_y), dtype=int)
+        else:
+            per_point_labels = scaled_atlas_map[
+                np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
+            ]
     else:
         per_point_labels = np.array([])
 
@@ -740,7 +774,16 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
 
 
 def get_objects_and_assign_regions_optimized(
-    segmentation, pixel_id, atlas_map, y_scale, x_scale, object_cutoff=0, tolerance=10
+    segmentation,
+    pixel_id,
+    atlas_map,
+    y_scale,
+    x_scale,
+    object_cutoff=0,
+    tolerance=10,
+    atlas_at_original_resolution=False,
+    reg_height=None,
+    reg_width=None,
 ):
     """
     OPTIMIZED: Single-pass object detection, pixel extraction, and region assignment.
@@ -756,6 +799,9 @@ def get_objects_and_assign_regions_optimized(
         x_scale (float): Horizontal scaling factor
         object_cutoff (int): Minimum object size
         tolerance (int): Color matching tolerance
+        atlas_at_original_resolution (bool): Whether atlas is at original resolution
+        reg_height (int): Registration height (for coordinate mapping)
+        reg_width (int): Registration width (for coordinate mapping)
 
     Returns:
         tuple: (centroids, scaled_centroidsX, scaled_centroidsY, scaled_y, scaled_x, per_centroid_labels)
@@ -804,12 +850,33 @@ def get_objects_and_assign_regions_optimized(
         # Scale object coordinates to registration space
         scaled_obj_y, scaled_obj_x = scale_positions(obj_y, obj_x, y_scale, x_scale)
 
+        # If atlas is at original resolution, we need to map coordinates back to atlas space
+        if atlas_at_original_resolution:
+            # Map from registration space to atlas space
+            atlas_height, atlas_width = atlas_map.shape
+            atlas_y_scale = atlas_height / reg_height
+            atlas_x_scale = atlas_width / reg_width
+            atlas_obj_y = scaled_obj_y * atlas_y_scale
+            atlas_obj_x = scaled_obj_x * atlas_x_scale
+
+            # Use atlas coordinates for region assignment
+            assignment_y = atlas_obj_y
+            assignment_x = atlas_obj_x
+            atlas_bounds_height = atlas_height
+            atlas_bounds_width = atlas_width
+        else:
+            # Use registration coordinates directly
+            assignment_y = scaled_obj_y
+            assignment_x = scaled_obj_x
+            atlas_bounds_height = atlas_map.shape[0]
+            atlas_bounds_width = atlas_map.shape[1]
+
         # Bounds checking
         valid_mask = (
-            (np.round(scaled_obj_y).astype(int) >= 0)
-            & (np.round(scaled_obj_y).astype(int) < atlas_map.shape[0])
-            & (np.round(scaled_obj_x).astype(int) >= 0)
-            & (np.round(scaled_obj_x).astype(int) < atlas_map.shape[1])
+            (np.round(assignment_y).astype(int) >= 0)
+            & (np.round(assignment_y).astype(int) < atlas_bounds_height)
+            & (np.round(assignment_x).astype(int) >= 0)
+            & (np.round(assignment_x).astype(int) < atlas_bounds_width)
         )
 
         if not np.any(valid_mask):
@@ -817,8 +884,8 @@ def get_objects_and_assign_regions_optimized(
             continue
 
         # Get region labels for valid pixels and find majority
-        valid_y = np.round(scaled_obj_y[valid_mask]).astype(int)
-        valid_x = np.round(scaled_obj_x[valid_mask]).astype(int)
+        valid_y = np.round(assignment_y[valid_mask]).astype(int)
+        valid_x = np.round(assignment_x[valid_mask]).astype(int)
         pixel_labels = atlas_map[valid_y, valid_x]
 
         # Majority voting
