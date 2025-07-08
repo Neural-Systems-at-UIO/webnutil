@@ -14,7 +14,7 @@ nt = Nutil(
     segmentation_folder=os.path.join(script_dir, "./tests/resized/segmentations"),
     alignment_json=os.path.join(
         script_dir,
-        "./tests/resized/alignment.json",
+        "./tests/resized/segmentations/alignment.json",
     ),
     colour=[0, 0, 0],
     atlas_path=os.path.join(

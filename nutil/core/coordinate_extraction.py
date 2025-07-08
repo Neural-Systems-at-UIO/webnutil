@@ -5,7 +5,11 @@ from .counting_and_load import flat_to_dataframe, load_image
 from .generate_target_slice import generate_target_slice
 from .visualign_deformations import triangulate
 import cv2
+import gc
+import psutil
+import logging
 from skimage import measure
+from skimage.transform import resize
 from ..utils.reconstruct_dzi import reconstruct_dzi
 from .transformations import (
     transform_points_to_atlas_space,
@@ -20,6 +24,41 @@ from .utils import (
     process_results,
     get_current_flat_file,
 )
+
+# Configure logging for memory debugging
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+
+def log_memory_usage(var_name, array=None, message=""):
+    """Log memory usage of an array and system memory."""
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    memory_mb = memory_info.rss / 1024 / 1024
+
+    if array is not None:
+        try:
+            if hasattr(array, "nbytes"):
+                array_mb = array.nbytes / 1024 / 1024
+                logger.info(
+                    f"MEMORY: {var_name} = {array_mb:.2f} MB ({array.shape} {array.dtype}) | Process: {memory_mb:.2f} MB | {message}"
+                )
+            elif hasattr(array, "__len__"):
+                logger.info(
+                    f"MEMORY: {var_name} = {len(array)} items | Process: {memory_mb:.2f} MB | {message}"
+                )
+            else:
+                logger.info(
+                    f"MEMORY: {var_name} = {type(array)} | Process: {memory_mb:.2f} MB | {message}"
+                )
+        except Exception as e:
+            logger.info(
+                f"MEMORY: {var_name} = ERROR getting size ({e}) | Process: {memory_mb:.2f} MB | {message}"
+            )
+    else:
+        logger.info(f"MEMORY: Process: {memory_mb:.2f} MB | {message}")
 
 
 def get_centroids_and_area(segmentation, pixel_cut_off=0):
@@ -126,6 +165,10 @@ def folder_to_atlas_space(
     np.ndarray,
     np.ndarray,
 ]:
+    log_memory_usage(
+        "start_folder_to_atlas", message=f"Starting folder_to_atlas_space for {folder}"
+    )
+
     quint_json = load_quint_json(quint_alignment)
     slices = list(quint_json["slices"])  # shallow copy to avoid mutation
     gridspacing = quint_json.get("gridspacing") if apply_damage_mask else None
@@ -135,6 +178,12 @@ def folder_to_atlas_space(
     segmentations = get_segmentations(folder)
     flat_files, flat_file_nrs = get_flat_files(folder, use_flat)
     n = len(segmentations)
+
+    log_memory_usage("segmentations", message=f"Found {n} segmentations")
+    if atlas_volume is not None:
+        log_memory_usage("atlas_volume_input", atlas_volume, "Input atlas volume")
+    if hemi_map is not None:
+        log_memory_usage("hemi_map_input", hemi_map, "Input hemisphere map")
     region_areas_list = [
         pd.DataFrame(
             {
@@ -160,6 +209,10 @@ def folder_to_atlas_space(
     points_hemi_labels = [np.array([]) for _ in range(n)]
     centroids_hemi_labels = [np.array([]) for _ in range(n)]
     for index, segmentation_path in enumerate(segmentations):
+        log_memory_usage(
+            "processing_slice",
+            message=f"Processing slice {index+1}/{n}: {segmentation_path}",
+        )
         seg_nr = int(number_sections([segmentation_path])[0])
         idxs = [i for i, s in enumerate(slices) if s["nr"] == seg_nr]
         if not idxs:
@@ -195,6 +248,12 @@ def folder_to_atlas_space(
             use_flat,
             gridspacing,
         )
+        log_memory_usage("after_slice", message=f"After processing slice {index+1}/{n}")
+        if index % 5 == 0:  # Log every 5 slices
+            gc.collect()
+            log_memory_usage(
+                "gc_checkpoint", message=f"GC checkpoint at slice {index+1}"
+            )
     (
         points,
         centroids,
@@ -294,6 +353,13 @@ def get_region_areas(
     Returns:
         tuple: (DataFrame of region areas, atlas map array).
     """
+    log_memory_usage(
+        "before_load_image",
+        message=f"Before load_image - seg: {seg_width}x{seg_height}",
+    )
+    if atlas_volume is not None:
+        log_memory_usage("atlas_volume", atlas_volume, "Input atlas volume")
+
     atlas_map = load_image(
         flat_file_atlas,
         slice_dict["anchoring"],
@@ -302,8 +368,13 @@ def get_region_areas(
         (seg_width, seg_height),
         atlas_labels,
     )
+    log_memory_usage("atlas_map_loaded", atlas_map, "Atlas map after load_image")
+
     region_areas = flat_to_dataframe(
         atlas_map, damage_mask, hemi_mask, (seg_width, seg_height)
+    )
+    log_memory_usage(
+        "region_areas", message=f"Region areas dataframe: {len(region_areas)} rows"
     )
     return region_areas, atlas_map
 
@@ -358,23 +429,42 @@ def segmentation_to_atlas_space(
         grid_spacing (int, optional): Spacing value for damage mask.
 
     Returns:        None"""
+    log_memory_usage(
+        "start", message=f"Starting segmentation_to_atlas_space for {segmentation_path}"
+    )
+
     segmentation = load_segmentation(segmentation_path)
+    log_memory_usage("segmentation", segmentation, "After loading segmentation")
 
     pixel_id = np.array(pixel_id, dtype=np.uint8)
     seg_height, seg_width = segmentation.shape[:2]
     reg_height, reg_width = slice_dict["height"], slice_dict["width"]
+    log_memory_usage(
+        "dimensions",
+        message=f"seg: {seg_height}x{seg_width}, reg: {reg_height}x{reg_width}",
+    )
+
     triangulation = get_triangulation(slice_dict, reg_width, reg_height, non_linear)
     if "grid" in slice_dict:
         damage_mask = create_damage_mask(slice_dict, grid_spacing)
-        damage_mask = cv2.resize(
+        log_memory_usage(
+            "damage_mask_initial", damage_mask, "After creating damage mask"
+        )
+        damage_mask = resize(
             damage_mask.astype(np.uint8),
-            (seg_width, seg_height),
-            interpolation=cv2.INTER_NEAREST,
+            (seg_height, seg_width),
+            order=0,
+            preserve_range=True,
         ).astype(bool)
+        log_memory_usage(
+            "damage_mask_resized", damage_mask, "After resizing damage mask"
+        )
     else:
         damage_mask = None
     if hemi_map is not None:
+        log_memory_usage("hemi_map", hemi_map, "Input hemi_map")
         hemi_mask = generate_target_slice(slice_dict["anchoring"], hemi_map)
+        log_memory_usage("hemi_mask", hemi_mask, "After generating hemi mask")
     else:
         hemi_mask = None
     region_areas, atlas_map = get_region_areas(
@@ -389,12 +479,37 @@ def segmentation_to_atlas_space(
         triangulation,
         damage_mask,
     )
-    scaled_atlas_map = cv2.resize(
-        atlas_map, (reg_width, reg_height), interpolation=cv2.INTER_NEAREST
-    )
-    y_scale, x_scale = transform_to_registration(
-        seg_width, seg_height, reg_width, reg_height
-    )
+    log_memory_usage("atlas_map", atlas_map, "After get_region_areas")
+
+    # Check if the resize would create a huge array - if so, work at original resolution
+    target_size = reg_height * reg_width * 4  # 4 bytes per uint32
+    atlas_at_original_resolution = False
+    if target_size > 500 * 1024 * 1024:  # If larger than 500MB
+        atlas_at_original_resolution = True
+        log_memory_usage(
+            "large_resize_detected",
+            message=f"Large resize detected: {reg_height}x{reg_width} = {target_size/1024/1024:.1f} MB, using original resolution",
+        )
+        scaled_atlas_map = atlas_map
+        # IMPORTANT: Still scale coordinates to registration resolution, not atlas resolution
+        # This ensures the coordinate transformation chain remains correct
+        y_scale, x_scale = transform_to_registration(
+            seg_width, seg_height, reg_width, reg_height
+        )
+        log_memory_usage(
+            "atlas_original_res",
+            message=f"Atlas kept at original resolution {atlas_map.shape}, but coordinates scaled to registration {reg_height}x{reg_width}",
+        )
+    else:
+        scaled_atlas_map = resize(
+            atlas_map, (reg_height, reg_width), order=0, preserve_range=True
+        )
+        log_memory_usage(
+            "scaled_atlas_map", scaled_atlas_map, "After resizing atlas_map"
+        )
+        y_scale, x_scale = transform_to_registration(
+            seg_width, seg_height, reg_width, reg_height
+        )
     centroids, points = None, None
     scaled_centroidsX, scaled_centroidsY, scaled_x, scaled_y = None, None, None, None
 
@@ -413,9 +528,19 @@ def segmentation_to_atlas_space(
         x_scale,
         object_cutoff,
         tolerance=10,
+        atlas_at_original_resolution=atlas_at_original_resolution,
+        reg_height=reg_height,
+        reg_width=reg_width,
     )
 
+    log_memory_usage(
+        "centroids", centroids, "After get_objects_and_assign_regions_optimized"
+    )
+    log_memory_usage("scaled_coordinates", scaled_x, "scaled_x coordinates")
+    log_memory_usage("scaled_coordinates_y", scaled_y, "scaled_y coordinates")
+
     del segmentation
+    log_memory_usage("after_del_segmentation", message="After deleting segmentation")
 
     # Robustly handle missing color matches
     if (
@@ -433,38 +558,110 @@ def segmentation_to_atlas_space(
         per_point_undamaged_list[index] = np.array([])
         points_hemi_labels[index] = np.array([])
         centroids_hemi_labels[index] = np.array([])
+
+        # Clean up atlas_map early
+        del atlas_map
+        if damage_mask is not None:
+            del damage_mask
+        if hemi_mask is not None:
+            del hemi_mask
+        gc.collect()
         return
 
     # Assign point labels
     if scaled_y is not None and scaled_x is not None:
-        per_point_labels = scaled_atlas_map[
-            np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
-        ]
+        if atlas_at_original_resolution:
+            # Map from registration space to atlas space for point assignment
+            atlas_height, atlas_width = scaled_atlas_map.shape
+            atlas_y_scale = atlas_height / reg_height
+            atlas_x_scale = atlas_width / reg_width
+            atlas_point_y = scaled_y * atlas_y_scale
+            atlas_point_x = scaled_x * atlas_x_scale
+
+            # Bounds checking
+            valid_mask = (
+                (np.round(atlas_point_y).astype(int) >= 0)
+                & (np.round(atlas_point_y).astype(int) < atlas_height)
+                & (np.round(atlas_point_x).astype(int) >= 0)
+                & (np.round(atlas_point_x).astype(int) < atlas_width)
+            )
+
+            if np.any(valid_mask):
+                valid_y = np.round(atlas_point_y[valid_mask]).astype(int)
+                valid_x = np.round(atlas_point_x[valid_mask]).astype(int)
+                per_point_labels = np.zeros(len(scaled_y), dtype=int)
+                per_point_labels[valid_mask] = scaled_atlas_map[valid_y, valid_x]
+            else:
+                per_point_labels = np.zeros(len(scaled_y), dtype=int)
+        else:
+            per_point_labels = scaled_atlas_map[
+                np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
+            ]
     else:
         per_point_labels = np.array([])
 
     if damage_mask is not None:
-        damage_mask = cv2.resize(
+        log_memory_usage(
+            "damage_mask_before_resize", damage_mask, "Before damage mask resize"
+        )
+        # Use the actual scaled_atlas_map shape, not assuming it's huge
+        target_shape = (scaled_atlas_map.shape[1], scaled_atlas_map.shape[0])
+
+        damage_mask = resize(
             damage_mask.astype(np.uint8),
-            (scaled_atlas_map.shape[::-1]),
-            interpolation=cv2.INTER_NEAREST,
+            target_shape,
+            order=0,
+            preserve_range=True,
         ).astype(bool)
+        log_memory_usage(
+            "damage_mask_after_resize", damage_mask, "After damage mask resize"
+        )
         per_point_undamaged = damage_mask[
-            np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
+            np.round(
+                scaled_y
+                * y_scale
+                / (seg_height / atlas_height if "atlas_height" in locals() else 1)
+            )
+            .astype(int)
+            .clip(0, damage_mask.shape[0] - 1),
+            np.round(
+                scaled_x
+                * x_scale
+                / (seg_width / atlas_width if "atlas_width" in locals() else 1)
+            )
+            .astype(int)
+            .clip(0, damage_mask.shape[1] - 1),
         ]
         per_centroid_undamaged = damage_mask[
-            np.round(scaled_centroidsY).astype(int),
-            np.round(scaled_centroidsX).astype(int),
+            np.round(
+                scaled_centroidsY
+                * y_scale
+                / (seg_height / atlas_height if "atlas_height" in locals() else 1)
+            )
+            .astype(int)
+            .clip(0, damage_mask.shape[0] - 1),
+            np.round(
+                scaled_centroidsX
+                * x_scale
+                / (seg_width / atlas_width if "atlas_width" in locals() else 1)
+            )
+            .astype(int)
+            .clip(0, damage_mask.shape[1] - 1),
         ]
     else:
         per_point_undamaged = np.ones(scaled_x.shape, dtype=bool)
         per_centroid_undamaged = np.ones(scaled_centroidsX.shape, dtype=bool)
     if hemi_mask is not None:
-        hemi_mask = cv2.resize(
-            hemi_mask.astype(np.uint8),
-            (scaled_atlas_map.shape[::-1]),
-            interpolation=cv2.INTER_NEAREST,
+        log_memory_usage(
+            "hemi_mask_before_resize", hemi_mask, "Before hemi mask resize"
         )
+        hemi_mask = resize(
+            hemi_mask.astype(np.uint8),
+            (scaled_atlas_map.shape[1], scaled_atlas_map.shape[0]),
+            order=0,
+            preserve_range=True,
+        )
+        log_memory_usage("hemi_mask_after_resize", hemi_mask, "After hemi mask resize")
 
         per_point_hemi = hemi_mask[
             np.round(scaled_y).astype(int),
@@ -502,9 +699,19 @@ def segmentation_to_atlas_space(
         reg_width,
     )
 
+    log_memory_usage("final_points", points, "Final transformed points")
+    log_memory_usage("final_centroids", centroids, "Final transformed centroids")
+
     del scaled_atlas_map
     if hemi_mask is not None:
         del hemi_mask
+    if damage_mask is not None:
+        del damage_mask
+    del atlas_map
+    log_memory_usage("after_cleanup", message="After deleting large arrays")
+    gc.collect()
+    log_memory_usage("after_gc", message="After garbage collection")
+
     points_list[index] = np.array(points if points is not None else [])
     centroids_list[index] = np.array(centroids if centroids is not None else [])
     region_areas_list[index] = region_areas
@@ -567,7 +774,16 @@ def get_scaled_pixels(segmentation, pixel_id, y_scale, x_scale, tolerance=10):
 
 
 def get_objects_and_assign_regions_optimized(
-    segmentation, pixel_id, atlas_map, y_scale, x_scale, object_cutoff=0, tolerance=10
+    segmentation,
+    pixel_id,
+    atlas_map,
+    y_scale,
+    x_scale,
+    object_cutoff=0,
+    tolerance=10,
+    atlas_at_original_resolution=False,
+    reg_height=None,
+    reg_width=None,
 ):
     """
     OPTIMIZED: Single-pass object detection, pixel extraction, and region assignment.
@@ -583,6 +799,9 @@ def get_objects_and_assign_regions_optimized(
         x_scale (float): Horizontal scaling factor
         object_cutoff (int): Minimum object size
         tolerance (int): Color matching tolerance
+        atlas_at_original_resolution (bool): Whether atlas is at original resolution
+        reg_height (int): Registration height (for coordinate mapping)
+        reg_width (int): Registration width (for coordinate mapping)
 
     Returns:
         tuple: (centroids, scaled_centroidsX, scaled_centroidsY, scaled_y, scaled_x, per_centroid_labels)
@@ -631,12 +850,33 @@ def get_objects_and_assign_regions_optimized(
         # Scale object coordinates to registration space
         scaled_obj_y, scaled_obj_x = scale_positions(obj_y, obj_x, y_scale, x_scale)
 
+        # If atlas is at original resolution, we need to map coordinates back to atlas space
+        if atlas_at_original_resolution:
+            # Map from registration space to atlas space
+            atlas_height, atlas_width = atlas_map.shape
+            atlas_y_scale = atlas_height / reg_height
+            atlas_x_scale = atlas_width / reg_width
+            atlas_obj_y = scaled_obj_y * atlas_y_scale
+            atlas_obj_x = scaled_obj_x * atlas_x_scale
+
+            # Use atlas coordinates for region assignment
+            assignment_y = atlas_obj_y
+            assignment_x = atlas_obj_x
+            atlas_bounds_height = atlas_height
+            atlas_bounds_width = atlas_width
+        else:
+            # Use registration coordinates directly
+            assignment_y = scaled_obj_y
+            assignment_x = scaled_obj_x
+            atlas_bounds_height = atlas_map.shape[0]
+            atlas_bounds_width = atlas_map.shape[1]
+
         # Bounds checking
         valid_mask = (
-            (np.round(scaled_obj_y).astype(int) >= 0)
-            & (np.round(scaled_obj_y).astype(int) < atlas_map.shape[0])
-            & (np.round(scaled_obj_x).astype(int) >= 0)
-            & (np.round(scaled_obj_x).astype(int) < atlas_map.shape[1])
+            (np.round(assignment_y).astype(int) >= 0)
+            & (np.round(assignment_y).astype(int) < atlas_bounds_height)
+            & (np.round(assignment_x).astype(int) >= 0)
+            & (np.round(assignment_x).astype(int) < atlas_bounds_width)
         )
 
         if not np.any(valid_mask):
@@ -644,8 +884,8 @@ def get_objects_and_assign_regions_optimized(
             continue
 
         # Get region labels for valid pixels and find majority
-        valid_y = np.round(scaled_obj_y[valid_mask]).astype(int)
-        valid_x = np.round(scaled_obj_x[valid_mask]).astype(int)
+        valid_y = np.round(assignment_y[valid_mask]).astype(int)
+        valid_x = np.round(assignment_x[valid_mask]).astype(int)
         pixel_labels = atlas_map[valid_y, valid_x]
 
         # Majority voting
