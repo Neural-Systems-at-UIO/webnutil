@@ -15,7 +15,7 @@ nt = Nutil(
         script_dir, "./tests/test_data/synthetic_data_doublesize_nonlinear/segmentations/"
     ),
     alignment_json=os.path.join(
-        script_dir, "./tests/test_data/synthetic_data_doublesize_nonlinear/alignment.json"
+        script_dir, "./tests/test_data/synthetic_data_doublesize_nonlinear/alignment2x.json"
     ),
     colour=[0, 0, 0],
     atlas_path=os.path.join(
@@ -29,4 +29,4 @@ nt = Nutil(
 nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
 print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
-nt.save_analysis("./test_result/test3_synthetic_doublesize_07_08_25")
+nt.save_analysis("./test_result/test3_synthetic_doublesize_07_08_25_aligment2x")
