@@ -3,6 +3,7 @@ import json
 from .read_and_write import write_hemi_points_to_meshview
 from typing import List
 import shutil
+import pandas as pd
 
 
 def ensure_dir_exists(path: str) -> None:
@@ -39,7 +40,7 @@ def move_file(src: str, dst: str) -> None:
 def save_analysis_output(
     pixel_points,
     centroids,
-    label_df,
+    label_df: pd.DataFrame,
     per_section_df,
     labeled_points,
     labeled_points_centroids,
@@ -91,6 +92,34 @@ def save_analysis_output(
     # Filter out rows where 'region_area' is 0 in label_df
     # if label_df is not None and "region_area" in label_df.columns:
     #     label_df = label_df[label_df["region_area"] != 0]
+
+    if (
+        label_df is not None
+        and "damaged_object_count" in label_df.columns
+        and label_df["damaged_object_count"].sum() == 0
+    ):
+        # If no damaged objects, remove the column
+        # feature implementation remains on request by Sharon 04.07
+        label_df = label_df.drop(
+            columns=[
+                "damaged_object_count",
+                "damaged_pixel_counts",
+                "undamaged_object_count",
+                "undamaged_pixel_count",
+            ],
+            errors="ignore",
+        )
+
+    # TODO Investigate why these guys multiply to 6
+    label_df = label_df.drop(columns=["MSH", "VIS"], errors="ignore")
+    if label_df is not None and "a" in label_df.columns:
+        label_df["a"] = (label_df["object_count"] != 0).astype(int)
+        # Look at alpha use in the future
+
+    if label_df is not None and "original_idx" in label_df.columns:
+        label_df["idx"] = label_df["original_idx"]
+        label_df = label_df.drop(columns=["original_idx"])
+
     if label_df is not None:
         label_df.to_csv(
             f"{output_folder}/whole_series_report/{prepend}counts.csv",

@@ -1,11 +1,10 @@
 .venv
-test_result/
 __pycache__/
+test_result/
 *.py[cod]
 *.pyost 
 test_dzi_reconstruction.py
 nutil.log
-tests
 atlases/
 data
 .github/

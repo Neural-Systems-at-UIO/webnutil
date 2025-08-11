@@ -52,6 +52,83 @@ def load_custom_atlas(
             raise
     try:
         atlas_labels = pd.read_csv(label_path)
+
+        # CRITICAL FIX: Remap huge indices to compact range to prevent massive memory allocation
+        original_indices = atlas_labels["idx"].values
+        max_idx = original_indices.max()
+        unique_indices = np.unique(original_indices)
+
+        print(
+            f"Atlas indices: min={original_indices.min()}, max={max_idx}, unique={len(unique_indices)}"
+        )
+
+        if max_idx > 100000:  # If we have problematically large indices
+            print(
+                f"WARNING: Large atlas indices detected (max={max_idx}). Analyzing volume usage..."
+            )
+
+            # Check which indices actually exist in the volume
+            volume_indices = np.unique(atlas_volume)
+            volume_max = volume_indices.max()
+            print(
+                f"Volume indices: min={volume_indices.min()}, max={volume_max}, unique={len(volume_indices)}"
+            )
+
+            # Find intersection of label indices and volume indices
+            labels_in_volume = np.intersect1d(original_indices, volume_indices)
+            print(
+                f"Label indices actually used in volume: {len(labels_in_volume)} out of {len(unique_indices)}"
+            )
+
+            if volume_max < 100000:
+                print("Volume indices are reasonable - no remapping needed for volume")
+                # Just ensure labels cover the volume indices
+                missing_in_labels = np.setdiff1d(volume_indices, original_indices)
+                if len(missing_in_labels) > 0:
+                    print(
+                        f"Adding {len(missing_in_labels)} missing volume indices to labels"
+                    )
+                    # Add missing indices as background
+                    for missing_idx in missing_in_labels:
+                        new_row = {
+                            "idx": missing_idx,
+                            "name": f"Unknown_{missing_idx}",
+                            "r": 0,
+                            "g": 0,
+                            "b": 0,
+                        }
+                        atlas_labels = pd.concat(
+                            [atlas_labels, pd.DataFrame([new_row])], ignore_index=True
+                        )
+            else:
+                print(
+                    "Both labels and volume have large indices - creating lookup table..."
+                )
+                # Create efficient lookup using numpy indexing
+                all_indices = np.union1d(original_indices, volume_indices)
+                max_all = all_indices.max()
+
+                # Create lookup table (this is the memory-efficient way)
+                lookup = np.arange(
+                    max_all + 1, dtype=np.uint32
+                )  # Default: identity mapping
+                compact_mapping = {
+                    old_idx: new_idx for new_idx, old_idx in enumerate(all_indices)
+                }
+
+                for old_idx, new_idx in compact_mapping.items():
+                    lookup[old_idx] = new_idx
+
+                # Remap volume efficiently
+                print("Remapping atlas volume using lookup table...")
+                atlas_volume = lookup[atlas_volume]
+
+                # Remap labels
+                atlas_labels["original_idx"] = atlas_labels["idx"]
+                atlas_labels["idx"] = atlas_labels["idx"].map(compact_mapping)
+
+                print(f"Remapped to range 0-{len(all_indices)-1}")
+
     except Exception as e:
         logger.error(f"Failed to read atlas labels from {label_path}: {e}")
         raise

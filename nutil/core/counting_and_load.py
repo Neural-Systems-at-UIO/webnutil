@@ -3,8 +3,44 @@ import pandas as pd
 import struct
 import cv2
 import os
+import gc
+import psutil
+import logging
 from .generate_target_slice import generate_target_slice
 from .visualign_deformations import transform_vec
+from skimage.transform import resize
+
+# Configure logging for memory debugging
+logger = logging.getLogger(__name__)
+
+
+def log_memory_usage(var_name, array=None, message=""):
+    """Log memory usage of an array and system memory."""
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    memory_mb = memory_info.rss / 1024 / 1024
+
+    if array is not None:
+        try:
+            if hasattr(array, "nbytes"):
+                array_mb = array.nbytes / 1024 / 1024
+                logger.info(
+                    f"MEMORY: {var_name} = {array_mb:.2f} MB ({array.shape} {array.dtype}) | Process: {memory_mb:.2f} MB | {message}"
+                )
+            elif hasattr(array, "__len__"):
+                logger.info(
+                    f"MEMORY: {var_name} = {len(array)} items | Process: {memory_mb:.2f} MB | {message}"
+                )
+            else:
+                logger.info(
+                    f"MEMORY: {var_name} = {type(array)} | Process: {memory_mb:.2f} MB | {message}"
+                )
+        except Exception as e:
+            logger.info(
+                f"MEMORY: {var_name} = ERROR getting size ({e}) | Process: {memory_mb:.2f} MB | {message}"
+            )
+    else:
+        logger.info(f"MEMORY: Process: {memory_mb:.2f} MB | {message}")
 
 
 def create_base_counts_dict(with_hemisphere=False, with_damage=False):
@@ -584,41 +620,56 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
         DataFrame: Pixel counts grouped by label.
         ndarray: Scaled label map of the image.
     """
+    log_memory_usage(
+        "flat_to_dataframe_input", image, "Input image to flat_to_dataframe"
+    )
+    if damage_mask is not None:
+        log_memory_usage("input_damage_mask", damage_mask, "Input damage mask")
+    if hemi_mask is not None:
+        log_memory_usage("input_hemi_mask", hemi_mask, "Input hemi mask")
+
     # If rescaleXY is set, resize image and masks to match
     if rescaleXY:
-        image = cv2.resize(
+        log_memory_usage("before_rescale", image, "Before rescaling image")
+        image = resize(
             image.astype(np.uint16),
-            (rescaleXY[0], rescaleXY[1]),
-            interpolation=cv2.INTER_NEAREST,
+            (rescaleXY[1], rescaleXY[0]),
+            order=0,
+            preserve_range=True,
         )
+        log_memory_usage("after_rescale", image, "After rescaling image")
         if hemi_mask is not None:
-            hemi_mask = cv2.resize(
+            hemi_mask = resize(
                 hemi_mask.astype(np.uint8),
-                (rescaleXY[0], rescaleXY[1]),
-                interpolation=cv2.INTER_NEAREST,
+                (rescaleXY[1], rescaleXY[0]),
+                order=0,
+                preserve_range=True,
             )
         if damage_mask is not None:
-            damage_mask = cv2.resize(
+            damage_mask = resize(
                 damage_mask.astype(np.uint8),
-                (rescaleXY[0], rescaleXY[1]),
-                interpolation=cv2.INTER_NEAREST,
+                (rescaleXY[1], rescaleXY[0]),
+                order=0,
+                preserve_range=True,
             ).astype(bool)
         scale_factor = False  # No need to scale counts, image is resized
     else:
         scale_factor = False
     df_area_per_label = pd.DataFrame(columns=["idx"])
     if hemi_mask is not None:
-        hemi_mask = cv2.resize(
+        hemi_mask = resize(
             hemi_mask.astype(np.uint8),
-            (image.shape[::-1]),
-            interpolation=cv2.INTER_NEAREST,
+            (image.shape[1], image.shape[0]),
+            order=0,
+            preserve_range=True,
         )
 
     if damage_mask is not None:
-        damage_mask = cv2.resize(
+        damage_mask = resize(
             damage_mask.astype(np.uint8),
-            (image.shape[::-1]),
-            interpolation=cv2.INTER_NEAREST,
+            (image.shape[1], image.shape[0]),
+            order=0,
+            preserve_range=True,
         ).astype(bool)
 
     # Build combinations for each scenario
@@ -707,20 +758,30 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
     Returns:
         ndarray: The loaded or transformed image.
     """
+    log_memory_usage("load_image_start", message=f"Loading image: {file}")
+
     if image_vector is not None and volume is not None:
-        # Generate the target slice from the volume using the image_vector
-        # Corrected argument order: ouv (image_vector) first, then atlas (volume)
+        log_memory_usage("volume_input", volume, "Volume input to load_image")
+        # get the slice of the atlas volume according to the anchorings
         target_slice = generate_target_slice(image_vector, volume)
-        # Convert to uint8 as requested.
-        # Note: If target_slice values are not already in the 0-255 range (e.g., floats 0.0-1.0),
-        image = target_slice.astype(np.uint8)
+        log_memory_usage(
+            "target_slice", target_slice, "Target slice from generate_target_slice"
+        )
+        image = target_slice.astype(np.uint32)
+        log_memory_usage("image_uint32", image, "Image after uint32 conversion")
     elif file.endswith(".seg"):  # Changed image_path to file
         image = read_seg_file(file)
+        log_memory_usage("seg_image", image, "After reading seg file")
         image = assign_labels_to_image(image, labelfile)
+        log_memory_usage("labeled_image", image, "After assigning labels")
     else:
         image = read_flat_file(file)
+        log_memory_usage("flat_image", image, "After reading flat file")
 
     if triangulation is not None:
+        log_memory_usage("before_warp", image, "Before image warping")
         image = warp_image(image, triangulation, rescaleXY)
+        log_memory_usage("after_warp", image, "After image warping")
 
+    log_memory_usage("load_image_final", image, "Final image from load_image")
     return image
