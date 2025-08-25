@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 import pandas as pd
 import numpy as np
 import logging
@@ -9,28 +9,30 @@ import sys
 from ..utils.atlas_loader import load_custom_atlas
 from .data_analysis import quantify_labeled_points
 from ..utils.file_operations import save_analysis_output
+from ..utils.section_visualization import create_section_visualizations
+from ..utils.read_and_write import read_json
 from .coordinate_extraction import folder_to_atlas_space
 
 # --- Setup Logger ---
 # Create a logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # Set to DEBUG to capture all levels of messages
+logger.setLevel(logging.DEBUG)  # Defaulted to DEBUG for now, should be info on live
 
-# Create handlers
-c_handler = logging.StreamHandler(sys.stdout)  # Console handler
-f_handler = logging.FileHandler("nutil.log")  # File handler
-c_handler.setLevel(logging.INFO)  # Console shows INFO and above
-f_handler.setLevel(logging.DEBUG)  # File logs everything
+# Create handlers (commented out temporarily for debugging)
+# c_handler = logging.StreamHandler(sys.stdout)  # Console handler
+# f_handler = logging.FileHandler("nutil.log")  # File handler
+# c_handler.setLevel(logging.INFO)  # Console shows INFO and above
+# f_handler.setLevel(logging.DEBUG)  # File logs everything
 
 # Create formatters and add it to handlers
-c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-c_handler.setFormatter(c_format)
-f_handler.setFormatter(f_format)
+# c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+# f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# c_handler.setFormatter(c_format)
+# f_handler.setFormatter(f_format)
 
 # Add handlers to the logger
-logger.addHandler(c_handler)
-logger.addHandler(f_handler)
+# logger.addHandler(c_handler)
+# logger.addHandler(f_handler)
 # --- End Setup Logger ---
 
 
@@ -179,7 +181,9 @@ class Nutil:
             logger.error(f"Error quantifying coordinates: {e}", exc_info=True)
             raise ValueError(f"Error quantifying coordinates: {e}")
 
-    def save_analysis(self, output_folder: str) -> None:
+    def save_analysis(
+        self, output_folder: str, create_visualizations: bool = True
+    ) -> None:
         logger.info(f"Attempting to save analysis to: {output_folder}")
         if not hasattr(self, "label_df") or not hasattr(self, "per_section_df"):
             logger.error("Attempted to save analysis before quantification.")
@@ -217,6 +221,43 @@ class Nutil:
                 prepend="",
             )
             logger.info(f"Analysis results saved successfully to: {output_folder}")
+
+            # Create section visualizations (optional)
+            if create_visualizations:
+                try:
+                    if (
+                        hasattr(self, "atlas_volume")
+                        and self.atlas_volume is not None
+                        and self.alignment_json is not None
+                        and self.segmentation_folder is not None
+                    ):
+                        logger.info("Creating section visualizations...")
+                        alignment_data = read_json(self.alignment_json)
+
+                        # Extract objects data per section for visualization
+                        objects_per_section = self._extract_objects_per_section()
+
+                        create_section_visualizations(
+                            segmentation_folder=self.segmentation_folder,
+                            alignment_json=alignment_data,
+                            atlas_volume=self.atlas_volume,
+                            atlas_labels=self.atlas_labels,
+                            output_folder=output_folder,
+                            objects_per_section=objects_per_section,
+                            scale_factor=0.6,
+                        )
+                        logger.info("Section visualizations created successfully")
+                    else:
+                        logger.warning(
+                            "Required data not available for visualizations (atlas_volume, alignment_json, or segmentation_folder)"
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not create section visualizations: {e}")
+            else:
+                logger.info(
+                    "Visualization creation skipped (create_visualizations=False)"
+                )
+
         except FileNotFoundError as e:
             logger.error(f"Error saving analysis - file not found: {e}", exc_info=True)
             raise ValueError(f"Error saving analysis - file not found: {e}")
@@ -241,3 +282,66 @@ class Nutil:
             )
         logger.info("Region summary retrieved successfully.")
         return self.label_df
+
+    def _extract_objects_per_section(self) -> List[List[Dict]]:
+        """
+        Extract object data per section for visualization purposes.
+
+        Returns:
+            List of object dictionaries for each section
+        """
+        objects_per_section = []
+
+        if (
+            not hasattr(self, "centroids")
+            or not hasattr(self, "centroids_labels")
+            or not hasattr(self, "centroids_len")
+        ):
+            return objects_per_section
+
+        # Group objects by section based on centroids_len
+        prev_cl = 0
+        for i, cl in enumerate(self.centroids_len):
+            section_objects = []
+
+            # Get centroids and labels for this section
+            if cl > 0 and prev_cl + cl <= len(self.centroids):
+                section_centroids = self.centroids[prev_cl : prev_cl + cl]
+                section_labels = self.centroids_labels[prev_cl : prev_cl + cl]
+
+                # Group by region ID and create objects
+                unique_labels = np.unique(section_labels)
+                for label in unique_labels:
+                    if label == 0:  # Skip background
+                        continue
+
+                    # Find all centroids for this region
+                    label_mask = section_labels == label
+                    label_centroids = section_centroids[label_mask]
+
+                    if len(label_centroids) > 0:
+                        # Get region info from atlas_labels
+                        region_info = self.atlas_labels[
+                            self.atlas_labels["idx"] == label
+                        ]
+                        if not region_info.empty:
+                            region_row = region_info.iloc[0]
+
+                            # Flatten coordinates to triplets format
+                            triplets = label_centroids.flatten().tolist()
+
+                            obj_dict = {
+                                "idx": int(label),
+                                "name": str(region_row.get("name", f"Region {label}")),
+                                "count": len(label_centroids),
+                                "triplets": triplets,
+                                "r": int(region_row.get("r", 128)),
+                                "g": int(region_row.get("g", 128)),
+                                "b": int(region_row.get("b", 128)),
+                            }
+                            section_objects.append(obj_dict)
+
+            objects_per_section.append(section_objects)
+            prev_cl += cl
+
+        return objects_per_section

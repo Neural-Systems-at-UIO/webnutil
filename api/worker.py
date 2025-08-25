@@ -38,9 +38,7 @@ def process_task(task_id):
         )  # Use asyncio.run()
         # Download alignment JSON
         alignment_json, alignment_json_path = asyncio.run(
-            get_json(
-                str(task["alignment_json_path"]), str(task["token"]), task_id
-            )
+            get_json(str(task["alignment_json_path"]), str(task["token"]), task_id)
         )  # Use asyncio.run()
         # Update status: PROCESSING
         redis.hset(
@@ -70,7 +68,7 @@ def process_task(task_id):
         nutil.quantify_coordinates()
         output_dir = f"/data/nutil_tasks/{task_id}/output"
         os.makedirs(output_dir, exist_ok=True)
-        nutil.save_analysis(output_dir)
+        nutil.save_analysis(output_dir, create_visualizations=False)
         # Update status: UPLOADING
         redis.hset(
             task_key,
@@ -79,7 +77,9 @@ def process_task(task_id):
                 "message": "Uploading results...",
             },
         )
-        asyncio.run(upload_directory(output_dir, str(task["upload_to"]), str(task["token"]))) # Use asyncio.run()
+        asyncio.run(
+            upload_directory(output_dir, str(task["upload_to"]), str(task["token"]))
+        )  # Use asyncio.run()
         # Update status: COMPLETED
         redis.hset(
             task_key,

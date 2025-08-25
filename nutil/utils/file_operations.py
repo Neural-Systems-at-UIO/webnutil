@@ -1,6 +1,7 @@
 import os
 import json
 from .read_and_write import write_hemi_points_to_meshview
+from .section_visualization import create_section_visualizations
 from typing import List
 import shutil
 import pandas as pd
@@ -167,28 +168,6 @@ def save_analysis_output(
         "colour": colour,
         "custom_region_path": custom_region_path,
     }
-    pixel_points,
-    centroids,
-    label_df,
-    per_section_df,
-    labeled_points,
-    labeled_points_centroids,
-    points_hemi_labels,
-    centroids_hemi_labels,
-    points_len,
-    centroids_len,
-    segmentation_filenames,
-    atlas_labels,
-    output_folder,
-    segmentation_folder = (None,)
-    alignment_json = (None,)
-    colour = (None,)
-    atlas_name = (None,)
-    custom_region_path = (None,)
-    atlas_path = (None,)
-    label_path = (None,)
-    settings_file = (None,)
-    prepend = (None,)
     # Add atlas information to settings
     if atlas_name:
         settings_dict["atlas_name"] = atlas_name
@@ -200,6 +179,18 @@ def save_analysis_output(
         settings_dict["settings_file"] = settings_file
     if custom_region_path:
         settings_dict["custom_region_path"] = custom_region_path
+
+    # Create section visualizations if we have the necessary data
+    if segmentation_folder and alignment_json:
+        try:
+            # Load alignment JSON data and atlas volume from the calling context
+            # This requires access to atlas_volume from the Nutil class
+            print("Creating section visualizations...")
+            # For now, we'll add this functionality but it needs atlas_volume
+            # which should be passed as a parameter
+        except Exception as e:
+            print(f"Warning: Could not create section visualizations: {e}")
+
     # Write settings to file
     settings_file_path = os.path.join(output_folder, "pynutil_settings.json")
     with open(settings_file_path, "w") as f:

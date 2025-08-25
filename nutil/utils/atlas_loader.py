@@ -36,7 +36,7 @@ def process_atlas_volume(vol: np.ndarray) -> np.ndarray:
 
 
 def load_custom_atlas(
-    atlas_path: str, hemi_path: Optional[str], label_path: str
+    atlas_path: str | None, hemi_path: Optional[str], label_path: str | None
 ) -> Tuple[np.ndarray, Optional[np.ndarray], pd.DataFrame]:
     try:
         atlas_volume, _ = nrrd.read(atlas_path)

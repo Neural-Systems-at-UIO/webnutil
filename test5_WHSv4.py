@@ -15,7 +15,7 @@ nt = Nutil(
         script_dir, "./tests/test_data/segmentations_test5_WHSv4/segmentations/"
     ),
     alignment_json=os.path.join(
-        script_dir, "./tests/test_data/segmentations_test5_WHSv4/test5_WHSv4.json"
+        script_dir, "./tests/test_data/segmentations_test5_WHSv4/test5_WHSv4_test.json"
     ),
     colour=[255, 0, 0],
     atlas_path=os.path.join(
