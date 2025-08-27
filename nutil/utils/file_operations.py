@@ -38,6 +38,53 @@ def move_file(src: str, dst: str) -> None:
     shutil.move(src, dst)
 
 
+def _apply_dataframe_manipulations(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Apply standard manipulations to a dataframe (used for both whole series and per-section reports).
+    
+    Args:
+        df: Input dataframe to manipulate
+        
+    Returns:
+        Manipulated dataframe
+    """
+    if df is None:
+        return df
+    
+    # Create a copy to avoid modifying the original
+    df = df.copy()
+    
+    # Remove damaged columns if no damaged objects exist
+    if (
+        "damaged_object_count" in df.columns
+        and df["damaged_object_count"].sum() == 0
+    ):
+        # If no damaged objects, remove the column
+        # feature implementation remains on request by Sharon 04.07
+        df = df.drop(
+            columns=[
+                "damaged_object_count",
+                "damaged_pixel_counts",
+                "undamaged_object_count",
+                "undamaged_pixel_count",
+            ],
+            errors="ignore",
+        )
+
+    # TODO Investigate why these guys multiply to 6
+    df = df.drop(columns=["MSH", "VIS"], errors="ignore")
+    
+    if "a" in df.columns:
+        df["a"] = (df["object_count"] != 0).astype(int)
+        # Look at alpha use in the future
+
+    if "original_idx" in df.columns:
+        df["idx"] = df["original_idx"]
+        df = df.drop(columns=["original_idx"])
+    
+    return df
+
+
 def save_analysis_output(
     pixel_points,
     centroids,
@@ -90,36 +137,9 @@ def save_analysis_output(
     ensure_dir_exists(f"{output_folder}/per_section_meshview")
     ensure_dir_exists(f"{output_folder}/per_section_reports")
     ensure_dir_exists(f"{output_folder}/whole_series_meshview")
-    # Filter out rows where 'region_area' is 0 in label_df
-    # if label_df is not None and "region_area" in label_df.columns:
-    #     label_df = label_df[label_df["region_area"] != 0]
-
-    if (
-        label_df is not None
-        and "damaged_object_count" in label_df.columns
-        and label_df["damaged_object_count"].sum() == 0
-    ):
-        # If no damaged objects, remove the column
-        # feature implementation remains on request by Sharon 04.07
-        label_df = label_df.drop(
-            columns=[
-                "damaged_object_count",
-                "damaged_pixel_counts",
-                "undamaged_object_count",
-                "undamaged_pixel_count",
-            ],
-            errors="ignore",
-        )
-
-    # TODO Investigate why these guys multiply to 6
-    label_df = label_df.drop(columns=["MSH", "VIS"], errors="ignore")
-    if label_df is not None and "a" in label_df.columns:
-        label_df["a"] = (label_df["object_count"] != 0).astype(int)
-        # Look at alpha use in the future
-
-    if label_df is not None and "original_idx" in label_df.columns:
-        label_df["idx"] = label_df["original_idx"]
-        label_df = label_df.drop(columns=["original_idx"])
+    
+    # Apply standard dataframe manipulations
+    label_df = _apply_dataframe_manipulations(label_df)
 
     if label_df is not None:
         label_df.to_csv(
@@ -222,6 +242,10 @@ def _save_per_section_reports(
         per_section_df,
     ):
         split_fn = fn.split(os.sep)[-1].split(".")[0]
+        
+        # Apply the same manipulations to per-section dataframes
+        df = _apply_dataframe_manipulations(df)
+        
         df.to_csv(
             f"{output_folder}/per_section_reports/{prepend}{split_fn}.csv",
             sep=";",

@@ -29,5 +29,5 @@ nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
 print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
 
-nt.save_analysis("./test_result/Test2_tTA_NOP_nonlinear_21_08_25")
+nt.save_analysis("./test_result/Test2_tTA_NOP_nonlinear")
 
