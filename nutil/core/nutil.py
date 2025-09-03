@@ -19,20 +19,20 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # Defaulted to DEBUG for now, should be info on live
 
 # Create handlers (commented out temporarily for debugging)
-# c_handler = logging.StreamHandler(sys.stdout)  # Console handler
-# f_handler = logging.FileHandler("nutil.log")  # File handler
-# c_handler.setLevel(logging.INFO)  # Console shows INFO and above
-# f_handler.setLevel(logging.DEBUG)  # File logs everything
+c_handler = logging.StreamHandler(sys.stdout)  # Console handler
+f_handler = logging.FileHandler("nutil.log")  # File handler
+c_handler.setLevel(logging.INFO)  # Console shows INFO and above
+f_handler.setLevel(logging.DEBUG)  # File logs everything
 
 # Create formatters and add it to handlers
-# c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-# f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-# c_handler.setFormatter(c_format)
-# f_handler.setFormatter(f_format)
+c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+c_handler.setFormatter(c_format)
+f_handler.setFormatter(f_format)
 
 # Add handlers to the logger
-# logger.addHandler(c_handler)
-# logger.addHandler(f_handler)
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
 # --- End Setup Logger ---
 
 

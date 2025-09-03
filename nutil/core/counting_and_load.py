@@ -628,35 +628,29 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
     if hemi_mask is not None:
         log_memory_usage("input_hemi_mask", hemi_mask, "Input hemi mask")
 
-    # If rescaleXY is set, resize image and masks to match
+    # Disable atlas scaling to prevent memory issues - keep everything at original resolution
     if rescaleXY:
-        log_memory_usage("before_rescale", image, "Before rescaling image")
-        image = resize(
-            image.astype(np.uint16),
-            (rescaleXY[1], rescaleXY[0]),
-            order=0,
-            preserve_range=True,
-        )
-        log_memory_usage("after_rescale", image, "After rescaling image")
+        log_memory_usage("rescale_disabled", message=f"Atlas rescaling disabled: keeping {image.shape} instead of {rescaleXY}")
+        # Always resize masks to match image size instead of scaling image up
         if hemi_mask is not None:
             hemi_mask = resize(
                 hemi_mask.astype(np.uint8),
-                (rescaleXY[1], rescaleXY[0]),
+                (image.shape[1], image.shape[0]),
                 order=0,
                 preserve_range=True,
             )
         if damage_mask is not None:
             damage_mask = resize(
                 damage_mask.astype(np.uint8),
-                (rescaleXY[1], rescaleXY[0]),
+                (image.shape[1], image.shape[0]),
                 order=0,
                 preserve_range=True,
             ).astype(bool)
-        scale_factor = False  # No need to scale counts, image is resized
+        scale_factor = False
     else:
         scale_factor = False
     df_area_per_label = pd.DataFrame(columns=["idx"])
-    if hemi_mask is not None:
+    if hemi_mask is not None and hemi_mask.shape != image.shape:
         hemi_mask = resize(
             hemi_mask.astype(np.uint8),
             (image.shape[1], image.shape[0]),
@@ -664,7 +658,7 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
             preserve_range=True,
         )
 
-    if damage_mask is not None:
+    if damage_mask is not None and damage_mask.shape != image.shape:
         damage_mask = resize(
             damage_mask.astype(np.uint8),
             (image.shape[1], image.shape[0]),

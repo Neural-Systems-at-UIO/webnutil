@@ -1,17 +1,32 @@
 
+$ErrorActionPreference = "Stop"
+
 if (-not $env:REGISTRY) {
     $env:REGISTRY = "docker-registry.ebrains.eu/workbench"
-    Write-Host "REGISTRY environment variable not set. Using default: $env:REGISTRY"
+    Write-Host "Using default registry: $env:REGISTRY" -ForegroundColor Yellow
 }
 
-Write-Host "Building API image for WebNutil"
-docker build -t "$env:REGISTRY/webnutil-api" -f Dockerfile.api .
+try {
+    Write-Host "Building API image..." -ForegroundColor Cyan
+    docker build -t "$env:REGISTRY/webnutil-api" -f Dockerfile.api .
+    if ($LASTEXITCODE -ne 0) { throw "API build failed" }
+    Write-Host "✓ API build successful" -ForegroundColor Green
 
-Write-Host "Building WebNutil Worker image"
-docker build -t "$env:REGISTRY/webnutil-worker" -f Dockerfile.worker .
+    Write-Host "Building Worker image..." -ForegroundColor Cyan
+    docker build -t "$env:REGISTRY/webnutil-worker" -f Dockerfile.worker .
+    if ($LASTEXITCODE -ne 0) { throw "Worker build failed" }
+    Write-Host "✓ Worker build successful" -ForegroundColor Green
 
-Write-Host "Pushing images to harbor"
-docker push "$env:REGISTRY/webnutil-api"
-docker push "$env:REGISTRY/webnutil-worker"
+    Write-Host "Pushing images..." -ForegroundColor Cyan
+    docker push "$env:REGISTRY/webnutil-api"
+    if ($LASTEXITCODE -ne 0) { throw "API push failed" }
+    
+    docker push "$env:REGISTRY/webnutil-worker"
+    if ($LASTEXITCODE -ne 0) { throw "Worker push failed" }
 
-Write-Host "Build and push completed successfully."
+    Write-Host "✓ Build and push completed!" -ForegroundColor Green
+}
+catch {
+    Write-Host "✗ $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
