@@ -5,3 +5,4 @@ opencv-python
 scikit-image
 xmltodict
 psutil
+pytest
