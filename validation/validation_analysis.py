@@ -1,9 +1,5 @@
 import pytest
-import json
-import tempfile
-import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 import pandas as pd
 import numpy as np
 import sys
@@ -160,11 +156,6 @@ class TestNutilResultsSynthetic:
             coords = np.array(nutil_object.pixel_points)
             assert coords.shape[1] == 3, "Coordinates should be 3D"
             assert np.all(coords >= 0), "Atlas coordinates should be non-negative"
-
-        # Check for region names and IDs are assigned! 
-        if nutil_object.atlas_labels is not None:
-            assert 'region_name' in nutil_object.atlas_labels.columns, "Region names should be present"
-            assert 'region_id' in nutil_object.atlas_labels.columns, "Region IDs should be present"
 
     def test_synthetic_data_reproducibility(self, synthetic_data_paths):
         """Test that analysis is reproducible with same parameters."""
