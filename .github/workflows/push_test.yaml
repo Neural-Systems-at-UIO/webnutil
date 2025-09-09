@@ -1,0 +1,31 @@
+name: Push Test
+
+on: 
+  push:
+    branches:
+      - dev
+jobs: 
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          # for now assuming the build for the docker image is the same with 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt 
+     - name: verify installation
+        run: |
+          pip list
+
+
+      - name: Run synthethic tests
+        run: | 
+        echo "actions workflow test via dev"
+    
