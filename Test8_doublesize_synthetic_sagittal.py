@@ -29,5 +29,5 @@ nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
 print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
 
-nt.save_analysis("./test_result/Test8_synthetic_sagittal_10_09_25")
+nt.save_analysis("./test_result/Test8_synthetic_sagittal_12_09_25")
 
