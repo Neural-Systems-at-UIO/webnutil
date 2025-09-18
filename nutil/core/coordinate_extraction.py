@@ -594,9 +594,14 @@ def segmentation_to_atlas_space(
             else:
                 per_point_labels = np.zeros(len(scaled_y), dtype=int)
         else:
-            per_point_labels = scaled_atlas_map[
-                np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)
-            ]
+            # Clamp coordinates to valid bounds to prevent index out of bounds errors
+            y_indices = np.clip(
+                np.round(scaled_y).astype(int), 0, scaled_atlas_map.shape[0] - 1
+            )
+            x_indices = np.clip(
+                np.round(scaled_x).astype(int), 0, scaled_atlas_map.shape[1] - 1
+            )
+            per_point_labels = scaled_atlas_map[y_indices, x_indices]
     else:
         per_point_labels = np.array([])
 
