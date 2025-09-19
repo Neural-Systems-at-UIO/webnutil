@@ -8,10 +8,12 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 nt = Nutil(
     segmentation_folder=os.path.join(
-        script_dir, "./tests/test_data/synthetic_data_doublesize_nonlinear/segmentations/"
+        script_dir,
+        "./tests/test_data/synthetic_data_doublesize_nonlinear/segmentations/",
     ),
     alignment_json=os.path.join(
-        script_dir, "./tests/test_data/synthetic_data_doublesize_nonlinear/alignment2x_nonlin.json"
+        script_dir,
+        "./tests/test_data/synthetic_data_doublesize_nonlinear/alignment2x_nonlin.json",
     ),
     colour=[0, 0, 0],
     atlas_path=os.path.join(
@@ -24,5 +26,5 @@ nt = Nutil(
 )
 nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
-print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
+
 nt.save_analysis("./test_result/test3_synthetic_doublesize_12_09_25")

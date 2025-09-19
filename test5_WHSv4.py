@@ -28,5 +28,5 @@ nt = Nutil(
 )
 nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
-print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
+
 nt.save_analysis("./test_result/test5_WHSv4")

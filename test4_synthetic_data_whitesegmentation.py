@@ -15,7 +15,8 @@ nt = Nutil(
         script_dir, "./tests/test_data/synthetic_data_whitesegmentations/segmentations/"
     ),
     alignment_json=os.path.join(
-        script_dir, "./tests/test_data/synthetic_data_whitesegmentations/alignment2x.json"
+        script_dir,
+        "./tests/test_data/synthetic_data_whitesegmentations/alignment2x.json",
     ),
     colour=[255, 255, 255],
     atlas_path=os.path.join(
@@ -28,5 +29,5 @@ nt = Nutil(
 )
 nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
-print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
+
 nt.save_analysis("./test_result/test4_synthetic_data_whitesegmentations")

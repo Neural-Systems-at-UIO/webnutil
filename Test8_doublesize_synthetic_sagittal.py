@@ -11,10 +11,8 @@ nt = Nutil(
         script_dir, "./tests/test_data/Test8_synthetic_sagittal/Segmentations/"
     ),
     alignment_json=os.path.join(
-
         script_dir,
         "./tests/test_data/Test8_synthetic_sagittal/Test8_synthetic_sagittal_nonlin.json",
-
     ),
     colour=[0, 0, 0],
     atlas_path=os.path.join(
@@ -27,7 +25,6 @@ nt = Nutil(
 )
 nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
-print(nt.get_region_summary().sort_values(by="object_count", ascending=False))
+
 
 nt.save_analysis("./test_result/Test8_synthetic_sagittal_12_09_25")
-
