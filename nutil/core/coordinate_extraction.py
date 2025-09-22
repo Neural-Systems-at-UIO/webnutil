@@ -529,8 +529,8 @@ def segmentation_to_atlas_space(
         object_cutoff,
         tolerance=10,
         atlas_at_original_resolution=atlas_at_original_resolution,
-        reg_height=reg_height,
-        reg_width=reg_width,
+        reg_height=seg_height,
+        reg_width=seg_width,
     )
 
     log_memory_usage(
