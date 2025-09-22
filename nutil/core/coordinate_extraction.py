@@ -502,7 +502,11 @@ def segmentation_to_atlas_space(
         )
     else:
         scaled_atlas_map = resize(
-            atlas_map, (reg_height, reg_width), order=0, preserve_range=True
+            atlas_map,
+            (reg_height, reg_width),
+            order=0,
+            preserve_range=True,
+            mode="edge",
         )
         log_memory_usage(
             "scaled_atlas_map", scaled_atlas_map, "After resizing atlas_map"
@@ -529,8 +533,8 @@ def segmentation_to_atlas_space(
         object_cutoff,
         tolerance=10,
         atlas_at_original_resolution=atlas_at_original_resolution,
-        reg_height=seg_height,
-        reg_width=seg_width,
+        reg_height=reg_height,
+        reg_width=reg_width,
     )
 
     log_memory_usage(
@@ -595,12 +599,22 @@ def segmentation_to_atlas_space(
                 per_point_labels = np.zeros(len(scaled_y), dtype=int)
         else:
             # Clamp coordinates to valid bounds to prevent index out of bounds errors
-            y_indices = np.clip(
-                np.round(scaled_y).astype(int), 0, scaled_atlas_map.shape[0] - 1
-            )
-            x_indices = np.clip(
-                np.round(scaled_x).astype(int), 0, scaled_atlas_map.shape[1] - 1
-            )
+            rounded_y = np.round(scaled_y).astype(int)
+            rounded_x = np.round(scaled_x).astype(int)
+            y_out_of_bounds = (rounded_y < 0) | (rounded_y >= scaled_atlas_map.shape[0])
+            x_out_of_bounds = (rounded_x < 0) | (rounded_x >= scaled_atlas_map.shape[1])
+            if np.any(y_out_of_bounds) or np.any(x_out_of_bounds):
+                print(
+                    f"Point coordinates out of bounds before clamping: {np.sum(y_out_of_bounds)} y out, {np.sum(x_out_of_bounds)} x out"
+                )
+                print(
+                    f"Y: min {rounded_y.min()}, max {rounded_y.max()} (valid 0-{scaled_atlas_map.shape[0]-1})"
+                )
+                print(
+                    f"X: min {rounded_x.min()}, max {rounded_x.max()} (valid 0-{scaled_atlas_map.shape[1]-1})"
+                )
+            y_indices = np.clip(rounded_y, 0, scaled_atlas_map.shape[0] - 1)
+            x_indices = np.clip(rounded_x, 0, scaled_atlas_map.shape[1] - 1)
             per_point_labels = scaled_atlas_map[y_indices, x_indices]
     else:
         per_point_labels = np.array([])
@@ -812,6 +826,7 @@ def get_objects_and_assign_regions_optimized(
         tuple: (centroids, scaled_centroidsX, scaled_centroidsY, scaled_y, scaled_x, per_centroid_labels)
     """
     # Create binary mask for target pixels (single operation)
+    print(f"Detecting objects with pixel_id: {pixel_id}, tolerance: {tolerance}")
     binary_seg = np.all(
         np.abs(segmentation.astype(int) - np.array(pixel_id, dtype=int)) <= tolerance,
         axis=2,
@@ -819,6 +834,7 @@ def get_objects_and_assign_regions_optimized(
 
     # Get all matching pixels for point extraction
     pixel_y, pixel_x = np.where(binary_seg)
+    print(f"Detected {len(pixel_y)} pixels matching the target color")
     if len(pixel_y) == 0:
         return None, None, None, None, None, None
 
@@ -826,11 +842,23 @@ def get_objects_and_assign_regions_optimized(
     scaled_y, scaled_x = scale_positions(pixel_y, pixel_x, y_scale, x_scale)
 
     # Single labeling operation for object detection
-    labels = measure.label(binary_seg)
+    labels = measure.label(
+        binary_seg
+    )  # measure.label assigns a unique integer label to each connected component (object) in the binary image
     objects_info = measure.regionprops(
         labels
-    )  # objects_info.area iterable would be used for the weights
+    )  # measure.regionprops returns a list of RegionProperties objects, each containing properties like area, centroid, bounding box, etc. for each labeled region
+    total_labeled = len(objects_info)
+    print(f"Total labeled regions (objects): {total_labeled}")
+    original_objects = objects_info[:]
     objects_info = [obj for obj in objects_info if obj.area > object_cutoff]
+    remaining = len(objects_info)
+    print(f"Regions after area cutoff ({object_cutoff}): {remaining}")
+    filtered_out = total_labeled - remaining
+    if filtered_out > 0:
+        print(
+            f"Filtered out {filtered_out} objects due to area cutoff (area <= {object_cutoff})"
+        )
 
     if len(objects_info) == 0:
         return None, None, None, scaled_y, scaled_x, None
@@ -886,6 +914,9 @@ def get_objects_and_assign_regions_optimized(
 
         if not np.any(valid_mask):
             per_centroid_labels.append(0)  # Background
+            print(
+                f"Object {len(per_centroid_labels)} has no valid pixels in atlas map (assigned background label 0)"
+            )
             continue
 
         # Get region labels for valid pixels and find majority
@@ -899,6 +930,9 @@ def get_objects_and_assign_regions_optimized(
         per_centroid_labels.append(
             majority_label
         )  # The majority label is placed for the centroid
+        print(
+            f"Object {len(per_centroid_labels)}: majority label {majority_label} from {len(valid_y)} valid pixels"
+        )
 
     # Convert to arrays and scale centroids
     if centroids:
@@ -909,11 +943,16 @@ def get_objects_and_assign_regions_optimized(
             centroidsY, centroidsX, y_scale, x_scale
         )
         per_centroid_labels = np.array(per_centroid_labels)
+        print(
+            f"Successfully processed {len(per_centroid_labels)} centroids with region assignments"
+        )
+        print(f"Centroid labels: {per_centroid_labels}")
     else:
         centroids = None
         scaled_centroidsX = None
         scaled_centroidsY = None
         per_centroid_labels = np.array([])
+        print("No centroids found after processing")
 
     return (
         centroids,

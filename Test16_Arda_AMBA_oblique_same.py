@@ -15,3 +15,4 @@ nt.get_coordinates(object_cutoff=0, use_flat=False)
 nt.quantify_coordinates()
 
 nt.save_analysis("./test_result/Test16_Arda_AMBA_oblique_same")
+nt.get_region_summary()
