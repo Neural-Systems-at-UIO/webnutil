@@ -9,3 +9,4 @@ atlases/
 data
 .github/chatmodes
 notebooks
+.pytest_cache
