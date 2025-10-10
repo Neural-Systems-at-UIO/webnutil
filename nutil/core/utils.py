@@ -4,7 +4,7 @@ import re
 from glob import glob
 
 
-def number_sections(filenames, legacy=False):
+def extract_section_numbers(filenames: list[str], legacy=False):
     """
     Extract section numbers from a list of filenames.
 
@@ -16,7 +16,9 @@ def number_sections(filenames, legacy=False):
         list: List of section numbers as integers.
     """
     filenames = [filename.split("\\")[-1] for filename in filenames]
+    
     section_numbers = []
+
     for filename in filenames:
         if not legacy:
             match = re.findall(r"\_s\d+", filename)
@@ -35,7 +37,7 @@ def number_sections(filenames, legacy=False):
     return section_numbers
 
 
-def find_matching_pixels(segmentation, id):
+def find_matching_pixels(segmentation: np.ndarray, id: int):
     """
     Returns the Y and X coordinates of all the pixels in the segmentation that match the id provided.
 
@@ -71,7 +73,7 @@ def scale_positions(id_y, id_x, y_scale, x_scale):
     return id_y, id_x
 
 
-def calculate_scale_factor(image, rescaleXY):
+def calculate_scale_factor(image: np.ndarray, rescaleXY: tuple) -> float:
     """
     Calculates the scale factor for an image.
 
@@ -132,7 +134,7 @@ def get_flat_files(folder: str, use_flat=False) -> tuple:
             if any([file.endswith(".flat"), file.endswith(".seg")])
         ]
         print(f"Found {len(flat_files)} flat files in folder {folder}")
-        flat_file_nrs = [int(number_sections([ff])[0]) for ff in flat_files]
+        flat_file_nrs = [int(extract_section_numbers([ff])[0]) for ff in flat_files]
         return flat_files, flat_file_nrs
     return [], []
 

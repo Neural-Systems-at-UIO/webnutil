@@ -15,8 +15,8 @@ def transform_to_registration(seg_height, seg_width, reg_height, reg_width):
     Returns:
         tuple: Y and X scaling factors.
     """
-    y_scale = reg_height / seg_height
-    x_scale = reg_width / seg_width
+    y_scale = (reg_height - 1) / (seg_height - 1)
+    x_scale = (reg_width - 1) / (seg_width - 1)
     return y_scale, x_scale
 
 
@@ -46,6 +46,7 @@ def transform_to_atlas_space(anchoring, y, x, reg_height, reg_width):
     o = np.reshape(o, (3, 1))
     return (o + xyz_u + xyz_v).T
 
+
 def image_to_atlas_space(image, anchoring):
     """
     Transforms to atlas space an image using the QuickNII anchoring vector.
@@ -63,8 +64,11 @@ def image_to_atlas_space(image, anchoring):
     x = np.arange(width)
     y = np.arange(height)
     x_coords, y_coords = np.meshgrid(x, y)
-    coordinates = transform_to_atlas_space(anchoring, y_coords.flatten(), x_coords.flatten(), height, width)
+    coordinates = transform_to_atlas_space(
+        anchoring, y_coords.flatten(), x_coords.flatten(), height, width
+    )
     return coordinates
+
 
 def get_transformed_coordinates(
     non_linear,

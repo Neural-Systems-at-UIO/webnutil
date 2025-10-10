@@ -13,27 +13,21 @@ from ..utils.section_visualization import create_section_visualizations
 from ..utils.read_and_write import read_json
 from .coordinate_extraction import folder_to_atlas_space
 
-# --- Setup Logger ---
-# Create a logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # Defaulted to DEBUG for now, should be info on live
 
-# Create handlers (commented out temporarily for debugging)
 c_handler = logging.StreamHandler(sys.stdout)  # Console handler
 f_handler = logging.FileHandler("nutil.log")  # File handler
 c_handler.setLevel(logging.INFO)  # Console shows INFO and above
 f_handler.setLevel(logging.DEBUG)  # File logs everything
 
-# Create formatters and add it to handlers
 c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
 f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 c_handler.setFormatter(c_format)
 f_handler.setFormatter(f_format)
 
-# Add handlers to the logger
 logger.addHandler(c_handler)
 logger.addHandler(f_handler)
-# --- End Setup Logger ---
 
 
 class Nutil:
@@ -67,15 +61,19 @@ class Nutil:
                 atlas_path, hemi_path, label_path
             )
             logger.info("Custom atlas loaded successfully.")
+
         except FileNotFoundError as e:
             logger.error(f"Error loading atlas files: {e}", exc_info=True)
             raise ValueError(f"Error loading atlas files: {e}")
+        
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding JSON from atlas files: {e}", exc_info=True)
             raise ValueError(f"Error decoding JSON from atlas files: {e}")
+        
         except ValueError as e:
             logger.error(f"Initialization error: {e}", exc_info=True)
             raise
+
         except Exception as e:
             logger.error(f"Unexpected initialization error: {e}", exc_info=True)
             raise ValueError(f"Unexpected initialization error: {e}")
@@ -83,12 +81,15 @@ class Nutil:
     def _validate_atlas_params(
         self, atlas_path: Optional[str], label_path: Optional[str]
     ) -> None:
+        
         if not atlas_path:
             logger.error("atlas_path parameter is required but not provided.")
             raise ValueError("The atlas_path parameter is required.")
+        
         if not label_path:
             logger.error("label_path parameter is required but not provided.")
             raise ValueError("The label_path parameter is required.")
+        
         logger.debug("Atlas parameters validated successfully.")
 
     def get_coordinates(
@@ -98,16 +99,20 @@ class Nutil:
         use_flat: bool = False,
         apply_damage_mask: bool = True,
     ) -> None:
+        
         logger.info("Starting coordinate extraction.")
+
         logger.debug(
             f"Parameters: non_linear={non_linear}, object_cutoff={object_cutoff}, use_flat={use_flat}, apply_damage_mask={apply_damage_mask}"
         )
         if self.segmentation_folder is None:
             logger.error("Segmentation folder not provided for coordinate extraction.")
             raise ValueError("Segmentation folder must be provided to get_coordinates.")
+        
         if self.alignment_json is None:
             logger.error("Alignment JSON not provided for coordinate extraction.")
             raise ValueError("Alignment JSON must be provided to get_coordinates.")
+        
         if self.colour is None:
             logger.error("Colour not provided for coordinate extraction.")
             raise ValueError("Colour must be provided to get_coordinates.")
@@ -153,12 +158,16 @@ class Nutil:
             raise ValueError(f"Unexpected error extracting coordinates: {e}")
 
     def quantify_coordinates(self) -> None:
+
         logger.info("Starting coordinate quantification.")
+
         if not hasattr(self, "pixel_points") or not hasattr(self, "centroids"):
+
             logger.error("Attempted to quantify coordinates before extraction.")
             raise ValueError(
                 "Please run get_coordinates before running quantify_coordinates."
             )
+        
         try:
             (self.label_df, self.per_section_df) = quantify_labeled_points(
                 self.points_len,
@@ -173,26 +182,37 @@ class Nutil:
                 self.per_centroid_undamaged,
                 self.apply_damage_mask,
             )
+
             logger.info("Coordinate quantification completed successfully.")
+
             logger.debug(
                 f"Label_df shape: {self.label_df.shape if hasattr(self, 'label_df') else 'Not generated'}"
             )
+
         except Exception as e:
+
             logger.error(f"Error quantifying coordinates: {e}", exc_info=True)
+
             raise ValueError(f"Error quantifying coordinates: {e}")
 
     def save_analysis(
         self, output_folder: str, create_visualizations: bool = True
     ) -> None:
+        
         logger.info(f"Attempting to save analysis to: {output_folder}")
+
         if not hasattr(self, "pixel_points"):
+
             logger.error("Attempted to save analysis before coordinate extraction.")
             raise ValueError("Please run get_coordinates before saving the analysis.")
+        
         if not hasattr(self, "label_df") or not hasattr(self, "per_section_df"):
+            
             logger.error("Attempted to save analysis before quantification.")
             raise ValueError(
                 "Please run quantify_coordinates before saving the analysis."
             )
+        
         try:
             Path(output_folder).mkdir(parents=True, exist_ok=True)
             logger.info(f"Ensured output folder exists or created: {output_folder}")
@@ -283,7 +303,7 @@ class Nutil:
         logger.info("Region summary retrieved successfully.")
         return self.label_df
 
-    def _extract_objects_per_section(self) -> List[List[Dict]]:
+    def _extract_objects_per_section(self) -> list[list[dict]]:
         """
         Extract object data per section for visualization purposes.
 

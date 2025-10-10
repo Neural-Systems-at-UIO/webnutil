@@ -73,12 +73,14 @@ def _apply_dataframe_manipulations(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # TODO Investigate why these guys multiply to 6
-    # This was likely solved via Heidi
-    df = df.drop(columns=["MSH", "VIS"], errors="ignore")
+    # This was likely solved via Heidi. Made changes 10.10 for merge
+    columns_to_drop = ["MSH", "VIS", "MSH_x", "MSH_y", "VIS_x", "VIS_y", "a_x", "a_y"]
+    df = df.drop(columns=columns_to_drop, errors="ignore")
     
     if "a" in df.columns:
         df["a"] = (df["object_count"] != 0).astype(int)
         # Look at alpha use in the future
+        # no alpha for empty objects
 
     if "original_idx" in df.columns:
         df["idx"] = df["original_idx"]
@@ -149,6 +151,10 @@ def save_analysis_output(
             sep=";",
             na_rep="",
             index=False,
+        )
+        label_df.to_excel(
+            f"{output_folder}/whole_series_report/{prepend}counts.xlsx",
+            index=False
         )
     else:
         print("No quantification found, so only coordinates will be saved.")

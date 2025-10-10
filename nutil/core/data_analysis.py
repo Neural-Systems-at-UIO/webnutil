@@ -359,9 +359,20 @@ def _combine_slice_reports(
     label_df = _calculate_area_fractions(label_df)
     label_df.fillna(0, inplace=True)
 
-    # Reindex to match atlas labels order
-    label_df = (
-        label_df.set_index("idx").reindex(index=atlas_labels["idx"]).reset_index()
-    )
+    metadata_cols = ["name", "r", "g", "b", "original_idx"]
+    data_cols = [col for col in label_df.columns if col not in metadata_cols]
+    
+    if "original_idx" in atlas_labels.columns:
+        label_df_final = atlas_labels.merge(
+            label_df[data_cols], on="idx", how="left"
+        )
+        label_df_final["idx"] = label_df_final["original_idx"]
+        label_df_final = label_df_final.drop(columns=["original_idx"])
+    else:
+        label_df_final = atlas_labels.merge(
+            label_df[data_cols], on="idx", how="left"
+        )
 
-    return label_df
+    label_df_final.fillna(0, inplace=True)
+
+    return label_df_final

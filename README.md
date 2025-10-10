@@ -64,17 +64,23 @@ git clone https://github.com/your-org/webnutil-service.git
 cd webnutil-service
 pip install -r requirements.txt
 pip install -r api_requirements.txt
-# TODO: Add atlases dir
+pip install -r ui/requirements.txt (optional)
 ```
 
 ## Quick Start
 
+To set up and start the UI
 ```bash
-docker compose up -d
-# Creates the API, worker and a redis pull
+run_ui.ps1
 ```
 
-### Common usage with the Nutil module
+To start as a deployment
+```bash
+docker compose up -d
+# Creates the API, worker and a redis pod
+```
+
+### Expected usage with the Nutil module
 
 ```python
 from nutil import Nutil
@@ -92,7 +98,7 @@ nt = Nutil(
 nt.get_coordinates(object_cutoff=10, use_flat=False)
 nt.quantify_coordinates()
 
-# Get results as DF
+# Get results as a pandas DataFrame 
 results = nt.get_region_summary()
 print(results.sort_values(by="object_count", ascending=False))
 ```

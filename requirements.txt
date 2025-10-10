@@ -6,3 +6,4 @@ scikit-image
 xmltodict
 psutil
 pytest
+openpyxl
