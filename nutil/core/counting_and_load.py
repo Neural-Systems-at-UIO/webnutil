@@ -10,9 +10,7 @@ from .generate_target_slice import generate_target_slice
 from .visualign_deformations import transform_vec
 from skimage.transform import resize
 
-# Configure logging for memory debugging
 logger = logging.getLogger(__name__)
-
 
 def log_memory_usage(var_name, array=None, message=""):
     """Log memory usage of an array and system memory."""
@@ -463,15 +461,9 @@ def pixel_count_per_region(
     return df_counts_per_label
 
 
-def read_flat_file(file):
+def read_flat_file(file: str) -> np.ndarray[int,int]:
     """
     Reads a flat file and produces an image array.
-
-    Args:
-        file (str): Path to the flat file.
-
-    Returns:
-        ndarray: Image array extracted from the file.
     """
     with open(file, "rb") as f:
         b, w, h = struct.unpack(">BII", f.read(9))
@@ -484,15 +476,9 @@ def read_flat_file(file):
     return image
 
 
-def read_seg_file(file):
+def read_segmentation_file(file: str) -> np.ndarray:
     """
     Reads a segmentation file into an image array.
-
-    Args:
-        file (str): Path to the segmentation file.
-
-    Returns:
-        ndarray: The segmentation image.
     """
     with open(file, "rb") as f:
 
@@ -515,12 +501,14 @@ def read_seg_file(file):
         data = []
         while len(data) < w * h:
             data += [codes[byte() if len(codes) <= 256 else code()]] * (code() + 1)
+
     image_data = np.array(data)
     image = np.reshape(image_data, (h, w))
+    
     return image
 
 
-def assign_labels_to_image(image, labelfile):
+def assign_labels_to_image(image: np.ndarray, labelfile: pd.DataFrame) -> np.ndarray:
     """
     Assigns atlas or region labels to an image array.
 
@@ -533,12 +521,14 @@ def assign_labels_to_image(image, labelfile):
     """
     w, h = image.shape
     allen_id_image = np.zeros((h, w))  # create an empty image array
+    # this section produces an image filled with a single channel, made up of region ids
     coordsy, coordsx = np.meshgrid(list(range(w)), list(range(h)))
 
     values = image[coordsy, coordsx]
     lbidx = labelfile["idx"].values
 
     allen_id_image = lbidx[values.astype(int)]
+    print(f"Created lookup slice")
     return allen_id_image
 
 
@@ -778,7 +768,7 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
         image = target_slice.astype(np.uint32)
         log_memory_usage("image_uint32", image, "Image after uint32 conversion")
     elif file.endswith(".seg"):  # Changed image_path to file
-        image = read_seg_file(file)
+        image = read_segmentation_file(file)
         log_memory_usage("seg_image", image, "After reading seg file")
         image = assign_labels_to_image(image, labelfile)
         log_memory_usage("labeled_image", image, "After assigning labels")

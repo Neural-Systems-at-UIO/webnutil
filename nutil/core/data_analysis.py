@@ -359,27 +359,20 @@ def _combine_slice_reports(
     label_df = _calculate_area_fractions(label_df)
     label_df.fillna(0, inplace=True)
 
-    # Merge with atlas_labels to get proper ordering and fill missing regions
-    # Keep only columns from label_df that aren't metadata (name, r, g, b)
     metadata_cols = ["name", "r", "g", "b", "original_idx"]
     data_cols = [col for col in label_df.columns if col not in metadata_cols]
     
-    # Merge atlas_labels with the quantification data
     if "original_idx" in atlas_labels.columns:
-        # For remapped atlases, use original_idx as the join key
         label_df_final = atlas_labels.merge(
             label_df[data_cols], on="idx", how="left"
         )
-        # Replace idx with original_idx for output
         label_df_final["idx"] = label_df_final["original_idx"]
         label_df_final = label_df_final.drop(columns=["original_idx"])
     else:
-        # For non-remapped atlases, standard merge
         label_df_final = atlas_labels.merge(
             label_df[data_cols], on="idx", how="left"
         )
-    
-    # Fill NaN values with 0 for count columns
+
     label_df_final.fillna(0, inplace=True)
 
     return label_df_final

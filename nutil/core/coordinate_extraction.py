@@ -1,25 +1,130 @@
 import numpy as np
 import pandas as pd
-from ..utils.read_and_write import load_quint_json
-from .counting_and_load import flat_to_dataframe, load_image
-from .generate_target_slice import generate_target_slice
-from .visualign_deformations import triangulate
 import cv2
 import gc
 import psutil
 import logging
+from dataclasses import dataclass
+from typing import Optional
 from skimage import measure
 from skimage.transform import resize
+
+# custom imports 
+from ..utils.read_and_write import load_quint_json
+from .counting_and_load import flat_to_dataframe, load_image
+from .generate_target_slice import generate_target_slice
+from .visualign_deformations import triangulate
 from ..utils.reconstruct_dzi import reconstruct_dzi
 from .transformations import (
     transform_points_to_atlas_space,
     transform_to_registration,
     get_transformed_coordinates,
 )
+
+
+@dataclass
+class CoordinateSpaceTracker:
+    """
+    Tracks dimensions and scale factors across different coordinate spaces.
+    
+    Coordinate spaces:
+    - Segmentation space: Original segmentation image dimensions
+    - Registration space: Target alignment dimensions from QuickNII/VisuAlign JSON
+    - Atlas space: Atlas map dimensions (may differ if kept at original resolution)
+    
+    The registration space is used for warping/deformation transformations.
+    """
+    # Dimensions
+    seg_height: int
+    seg_width: int
+    reg_height: int
+    reg_width: int
+    atlas_height: Optional[int] = None
+    atlas_width: Optional[int] = None
+    
+    # Flags
+    atlas_at_original_resolution: bool = False
+    
+    def __post_init__(self):
+        """Calculate scale factors after initialization."""
+        # Segmentation -> Registration scales (used for warping)
+        self.seg_to_reg_y_scale = (self.reg_height - 1) / (self.seg_height - 1)
+        self.seg_to_reg_x_scale = (self.reg_width - 1) / (self.seg_width - 1)
+        
+        # Registration -> Atlas scales (only if atlas at original resolution)
+        self.reg_to_atlas_y_scale = None
+        self.reg_to_atlas_x_scale = None
+        
+        # Combined Segmentation -> Atlas scales
+        self.seg_to_atlas_y_scale = None
+        self.seg_to_atlas_x_scale = None
+    
+    def set_atlas_dimensions(self, atlas_height: int, atlas_width: int, 
+                            at_original_resolution: bool = False):
+        """
+        Set atlas dimensions and recalculate dependent scale factors.
+        
+        Args:
+            atlas_height: Height of the atlas map
+            atlas_width: Width of the atlas map
+            at_original_resolution: True if atlas was kept at original resolution
+        """
+        self.atlas_height = atlas_height
+        self.atlas_width = atlas_width
+        self.atlas_at_original_resolution = at_original_resolution
+        
+        if at_original_resolution:
+            # Calculate reg -> atlas scales
+            self.reg_to_atlas_y_scale = atlas_height / self.reg_height
+            self.reg_to_atlas_x_scale = atlas_width / self.reg_width
+            
+            # Calculate combined seg -> atlas scales
+            self.seg_to_atlas_y_scale = self.seg_to_reg_y_scale * self.reg_to_atlas_y_scale
+            self.seg_to_atlas_x_scale = self.seg_to_reg_x_scale * self.reg_to_atlas_x_scale
+        else:
+            # Atlas is at registration resolution
+            self.reg_to_atlas_y_scale = 1.0
+            self.reg_to_atlas_x_scale = 1.0
+            self.seg_to_atlas_y_scale = self.seg_to_reg_y_scale
+            self.seg_to_atlas_x_scale = self.seg_to_reg_x_scale
+    
+    def transform_seg_to_reg(self, y, x):
+        """Transform coordinates from segmentation to registration space."""
+        return y * self.seg_to_reg_y_scale, x * self.seg_to_reg_x_scale
+    
+    def transform_seg_to_atlas(self, y, x):
+        """Transform coordinates from segmentation to atlas space."""
+        if self.seg_to_atlas_y_scale is None:
+            raise ValueError("Atlas dimensions not set. Call set_atlas_dimensions first.")
+        return y * self.seg_to_atlas_y_scale, x * self.seg_to_atlas_x_scale
+    
+    def transform_reg_to_atlas(self, y, x):
+        """Transform coordinates from registration to atlas space."""
+        if self.reg_to_atlas_y_scale is None:
+            raise ValueError("Atlas dimensions not set. Call set_atlas_dimensions first.")
+        return y * self.reg_to_atlas_y_scale, x * self.reg_to_atlas_x_scale
+    
+    def get_target_space_dims(self):
+        """Get the dimensions of the target space (atlas if available, otherwise registration)."""
+        if self.atlas_height is not None:
+            return self.atlas_height, self.atlas_width
+        return self.reg_height, self.reg_width
+    
+    def __repr__(self):
+        return (
+            f"CoordinateSpaceTracker(\n"
+            f"  Segmentation: {self.seg_height}x{self.seg_width}\n"
+            f"  Registration: {self.reg_height}x{self.reg_width}\n"
+            f"  Atlas: {self.atlas_height}x{self.atlas_width} "
+            f"(original_res={self.atlas_at_original_resolution})\n"
+            f"  Scales: seg->reg=({self.seg_to_reg_y_scale:.3f}, {self.seg_to_reg_x_scale:.3f}), "
+            f"seg->atlas=({self.seg_to_atlas_y_scale}, {self.seg_to_atlas_x_scale})\n"
+            f")"
+        )
 from .utils import (
     get_flat_files,
     get_segmentations,
-    number_sections,
+    extract_section_numbers,
     scale_positions,
     process_results,
     get_current_flat_file,
@@ -213,7 +318,7 @@ def folder_to_atlas_space(
             "processing_slice",
             message=f"Processing slice {index+1}/{n}: {segmentation_path}",
         )
-        seg_nr = int(number_sections([segmentation_path])[0])
+        seg_nr = int(extract_section_numbers([segmentation_path])[0])
         idxs = [i for i, s in enumerate(slices) if s["nr"] == seg_nr]
         if not idxs:
             region_areas_list[index] = pd.DataFrame({"idx": []})
@@ -441,10 +546,20 @@ def segmentation_to_atlas_space(
     pixel_id = np.array(pixel_id, dtype=np.uint8)
     seg_height, seg_width = segmentation.shape[:2]
     reg_height, reg_width = slice_dict["height"], slice_dict["width"]
+    
+    # Initialize coordinate space tracker
+    coord_tracker = CoordinateSpaceTracker(
+        seg_height=seg_height,
+        seg_width=seg_width,
+        reg_height=reg_height,
+        reg_width=reg_width
+    )
+    
     log_memory_usage(
         "dimensions",
         message=f"seg: {seg_height}x{seg_width}, reg: {reg_height}x{reg_width}",
     )
+    print(f"Coordinate spaces initialized:\n{coord_tracker}")
 
     triangulation = get_triangulation(slice_dict, reg_width, reg_height, non_linear)
     if "grid" in slice_dict:
@@ -484,13 +599,23 @@ def segmentation_to_atlas_space(
     log_memory_usage("atlas_map", atlas_map, "After get_region_areas")
 
     scaled_atlas_map = atlas_map
-    atlas_at_original_resolution = False
-    # Since atlas_map is now at segmentation resolution, no scaling needed for object assignment
-    y_scale, x_scale = 1.0, 1.0
-    # But we still need the registration scale for later coordinate transformation
-    reg_y_scale, reg_x_scale = transform_to_registration(
-        seg_width, seg_height, reg_width, reg_height
+    
+    # Set atlas dimensions in the coordinate tracker
+    coord_tracker.set_atlas_dimensions(
+        atlas_height=atlas_map.shape[0],
+        atlas_width=atlas_map.shape[1],
+        at_original_resolution=False  # Will be updated if we detect large size
     )
+    
+    # For backward compatibility, keep these variables
+    atlas_at_original_resolution = False
+    y_scale = coord_tracker.seg_to_reg_y_scale
+    x_scale = coord_tracker.seg_to_reg_x_scale
+    seg_to_reg_y_scale = coord_tracker.seg_to_reg_y_scale
+    seg_to_reg_x_scale = coord_tracker.seg_to_reg_x_scale
+    atlas_height = coord_tracker.atlas_height
+    atlas_width = coord_tracker.atlas_width
+    
     centroids, points = None, None
     scaled_centroidsX, scaled_centroidsY, scaled_x, scaled_y = None, None, None, None
 
@@ -566,20 +691,16 @@ def segmentation_to_atlas_space(
 
     # Assign point labels
     if scaled_y is not None and scaled_x is not None:
-        if atlas_at_original_resolution:
-            # Map from registration space to atlas space for point assignment
-            atlas_height, atlas_width = scaled_atlas_map.shape
-            atlas_y_scale = atlas_height / reg_height
-            atlas_x_scale = atlas_width / reg_width
-            atlas_point_y = scaled_y * atlas_y_scale
-            atlas_point_x = scaled_x * atlas_x_scale
+        if coord_tracker.atlas_at_original_resolution:
+            # Transform: seg -> reg -> atlas using the tracker
+            atlas_point_y, atlas_point_x = coord_tracker.transform_seg_to_atlas(scaled_y, scaled_x)
 
             # Bounds checking
             valid_mask = (
                 (np.round(atlas_point_y).astype(int) >= 0)
-                & (np.round(atlas_point_y).astype(int) < atlas_height)
+                & (np.round(atlas_point_y).astype(int) < coord_tracker.atlas_height)
                 & (np.round(atlas_point_x).astype(int) >= 0)
-                & (np.round(atlas_point_x).astype(int) < atlas_width)
+                & (np.round(atlas_point_x).astype(int) < coord_tracker.atlas_width)
             )
 
             if np.any(valid_mask):
@@ -590,9 +711,11 @@ def segmentation_to_atlas_space(
             else:
                 per_point_labels = np.zeros(len(scaled_y), dtype=int)
         else:
-            # Clamp coordinates to valid bounds to prevent index out of bounds errors
-            rounded_y = np.round(scaled_y).astype(int)
-            rounded_x = np.round(scaled_x).astype(int)
+            # Atlas is at registration resolution, transform seg -> reg
+            reg_y, reg_x = coord_tracker.transform_seg_to_reg(scaled_y, scaled_x)
+            rounded_y = np.round(reg_y).astype(int)
+            rounded_x = np.round(reg_x).astype(int)
+            
             y_out_of_bounds = (rounded_y < 0) | (rounded_y >= scaled_atlas_map.shape[0])
             x_out_of_bounds = (rounded_x < 0) | (rounded_x >= scaled_atlas_map.shape[1])
             if np.any(y_out_of_bounds) or np.any(x_out_of_bounds):
@@ -615,7 +738,7 @@ def segmentation_to_atlas_space(
         log_memory_usage(
             "damage_mask_before_resize", damage_mask, "Before damage mask resize"
         )
-        # Use the actual scaled_atlas_map shape, not assuming it's huge
+        # Resize damage mask to match the scaled_atlas_map dimensions
         target_shape = (scaled_atlas_map.shape[1], scaled_atlas_map.shape[0])
 
         damage_mask = resize(
@@ -627,38 +750,34 @@ def segmentation_to_atlas_space(
         log_memory_usage(
             "damage_mask_after_resize", damage_mask, "After damage mask resize"
         )
+        
+        # Use the coordinate tracker to transform coordinates to damage_mask space
+        if coord_tracker.atlas_at_original_resolution:
+            # damage_mask is at atlas resolution, transform seg -> atlas
+            damage_mask_y, damage_mask_x = coord_tracker.transform_seg_to_atlas(scaled_y, scaled_x)
+        else:
+            # damage_mask is at registration resolution, transform seg -> reg
+            damage_mask_y, damage_mask_x = coord_tracker.transform_seg_to_reg(scaled_y, scaled_x)
+        
         per_point_undamaged = damage_mask[
-            np.round(
-                scaled_y
-                * y_scale
-                / (seg_height / atlas_height if "atlas_height" in locals() else 1)
-            )
-            .astype(int)
-            .clip(0, damage_mask.shape[0] - 1),
-            np.round(
-                scaled_x
-                * x_scale
-                / (seg_width / atlas_width if "atlas_width" in locals() else 1)
-            )
-            .astype(int)
-            .clip(0, damage_mask.shape[1] - 1),
+            np.round(damage_mask_y).astype(int).clip(0, damage_mask.shape[0] - 1),
+            np.round(damage_mask_x).astype(int).clip(0, damage_mask.shape[1] - 1),
         ]
+        
         if scaled_centroidsX is not None and scaled_centroidsY is not None:
+            # Same transformation for centroids
+            if coord_tracker.atlas_at_original_resolution:
+                damage_mask_centroid_y, damage_mask_centroid_x = coord_tracker.transform_seg_to_atlas(
+                    scaled_centroidsY, scaled_centroidsX
+                )
+            else:
+                damage_mask_centroid_y, damage_mask_centroid_x = coord_tracker.transform_seg_to_reg(
+                    scaled_centroidsY, scaled_centroidsX
+                )
+            
             per_centroid_undamaged = damage_mask[
-                np.round(
-                    scaled_centroidsY
-                    * y_scale
-                    / (seg_height / atlas_height if "atlas_height" in locals() else 1)
-                )
-                .astype(int)
-                .clip(0, damage_mask.shape[0] - 1),
-                np.round(
-                    scaled_centroidsX
-                    * x_scale
-                    / (seg_width / atlas_width if "atlas_width" in locals() else 1)
-                )
-                .astype(int)
-                .clip(0, damage_mask.shape[1] - 1),
+                np.round(damage_mask_centroid_y).astype(int).clip(0, damage_mask.shape[0] - 1),
+                np.round(damage_mask_centroid_x).astype(int).clip(0, damage_mask.shape[1] - 1),
             ]
         else:
             per_centroid_undamaged = np.array([], dtype=bool)
