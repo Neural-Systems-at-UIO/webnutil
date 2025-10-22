@@ -281,14 +281,16 @@ def segmentation_to_atlas_space(
     log_memory_usage("before_load_image", message=f"Before load_image - seg: {seg_width}x{seg_height}")
     if atlas_volume is not None:
         log_memory_usage("atlas_volume", atlas_volume, "Input atlas volume")
-    atlas_map = load_image(flat_file_atlas, slice_dict["anchoring"], atlas_volume, triangulation, (reg_width, reg_height), atlas_labels)
+    
+    # Keep atlas at original resolution to save memory
+    atlas_at_original_resolution = True
+    atlas_map = load_image(flat_file_atlas, slice_dict["anchoring"], atlas_volume, triangulation, (reg_width, reg_height), atlas_labels, skip_resize=atlas_at_original_resolution)
     log_memory_usage("atlas_map_loaded", atlas_map, "Atlas map after load_image")
     region_areas = flat_to_dataframe(atlas_map, damage_mask, hemi_mask, (seg_width, seg_height))
     log_memory_usage("region_areas", message=f"Region areas dataframe: {len(region_areas)} rows")
     log_memory_usage("atlas_map", atlas_map, "After calculating region areas")
 
     scaled_atlas_map = atlas_map
-    atlas_at_original_resolution = False
     y_scale = (reg_height - 1) / (seg_height - 1)
     x_scale = (reg_width - 1) / (seg_width - 1)
     centroids, points = None, None
@@ -362,22 +364,28 @@ def segmentation_to_atlas_space(
 
     if damage_mask is not None:
         log_memory_usage("damage_mask_before_resize", damage_mask, "Before damage mask resize")
-        damage_mask = resize(damage_mask.astype(np.uint8), (scaled_atlas_map.shape[1], scaled_atlas_map.shape[0]), order=0, preserve_range=True).astype(bool)
-        log_memory_usage("damage_mask_after_resize", damage_mask, "After damage mask resize")
-        per_point_undamaged = damage_mask[np.round(scaled_y * y_scale).astype(int).clip(0, damage_mask.shape[0] - 1), 
-                                          np.round(scaled_x * x_scale).astype(int).clip(0, damage_mask.shape[1] - 1)]
-        per_centroid_undamaged = (damage_mask[np.round(scaled_centroidsY * y_scale).astype(int).clip(0, damage_mask.shape[0] - 1), 
-                                              np.round(scaled_centroidsX * x_scale).astype(int).clip(0, damage_mask.shape[1] - 1)] 
+        # Resize damage mask to match registration resolution for coordinate lookup
+        damage_mask_reg = resize(damage_mask.astype(np.uint8), (reg_height, reg_width), order=0, preserve_range=True).astype(bool)
+        log_memory_usage("damage_mask_after_resize", damage_mask_reg, "After damage mask resize to registration resolution")
+        # scaled_y and scaled_x are already in registration space, no need to scale again
+        per_point_undamaged = damage_mask_reg[np.round(scaled_y).astype(int).clip(0, reg_height - 1), 
+                                              np.round(scaled_x).astype(int).clip(0, reg_width - 1)]
+        per_centroid_undamaged = (damage_mask_reg[np.round(scaled_centroidsY).astype(int).clip(0, reg_height - 1), 
+                                                  np.round(scaled_centroidsX).astype(int).clip(0, reg_width - 1)] 
                                  if scaled_centroidsX is not None and scaled_centroidsY is not None else np.array([], dtype=bool))
     else:
         per_point_undamaged = np.ones(scaled_x.shape, dtype=bool)
         per_centroid_undamaged = np.ones(scaled_centroidsX.shape, dtype=bool) if scaled_centroidsX is not None else np.array([], dtype=bool)
     if hemi_mask is not None:
         log_memory_usage("hemi_mask_before_resize", hemi_mask, "Before hemi mask resize")
-        hemi_mask = resize(hemi_mask.astype(np.uint8), (scaled_atlas_map.shape[1], scaled_atlas_map.shape[0]), order=0, preserve_range=True)
-        log_memory_usage("hemi_mask_after_resize", hemi_mask, "After hemi mask resize")
-        per_point_hemi = hemi_mask[np.round(scaled_y).astype(int), np.round(scaled_x).astype(int)][per_point_undamaged]
-        per_centroid_hemi = (hemi_mask[np.round(scaled_centroidsY).astype(int), np.round(scaled_centroidsX).astype(int)][per_centroid_undamaged] 
+        # Resize hemi mask to match registration resolution for coordinate lookup
+        hemi_mask_reg = resize(hemi_mask.astype(np.uint8), (reg_height, reg_width), order=0, preserve_range=True)
+        log_memory_usage("hemi_mask_after_resize", hemi_mask_reg, "After hemi mask resize to registration resolution")
+        # Clip coordinates to valid range and lookup hemisphere values
+        per_point_hemi = hemi_mask_reg[np.round(scaled_y).astype(int).clip(0, reg_height - 1), 
+                                       np.round(scaled_x).astype(int).clip(0, reg_width - 1)][per_point_undamaged]
+        per_centroid_hemi = (hemi_mask_reg[np.round(scaled_centroidsY).astype(int).clip(0, reg_height - 1), 
+                                           np.round(scaled_centroidsX).astype(int).clip(0, reg_width - 1)][per_centroid_undamaged] 
                             if scaled_centroidsX is not None and scaled_centroidsY is not None else np.array([]))
     else:
         per_point_hemi = [None] * len(scaled_x)

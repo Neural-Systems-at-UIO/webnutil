@@ -331,9 +331,9 @@ def flat_to_dataframe(image, damage_mask, hemi_mask, rescaleXY=None):
     return df_area_per_label
 
 
-def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=None):
+def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=None, skip_resize=False):
     """Loads an image from file or transforms a preloaded array, optionally applying warping."""
-    log_memory_usage("load_image_start", message=f"Loading image: {file}")
+    log_memory_usage("load_image_start", message=f"Loading image: {file}, skip_resize={skip_resize}")
 
     if image_vector is not None and volume is not None:
         log_memory_usage("volume_input", volume, "Volume input to load_image")
@@ -350,6 +350,9 @@ def load_image(file, image_vector, volume, triangulation, rescaleXY, labelfile=N
         image = warp_image(image, triangulation, rescaleXY)
         log_memory_usage("after_warp", image, "After image warping")
 
-    image = resize(image, rescaleXY, order=0, preserve_range=True, mode="reflect")
-    log_memory_usage("load_image_final", image, "Final image from load_image")
+    if not skip_resize:
+        image = resize(image, rescaleXY, order=0, preserve_range=True, mode="reflect")
+        log_memory_usage("load_image_final", image, f"Final image from load_image (resized to {rescaleXY})")
+    else:
+        log_memory_usage("load_image_final", image, f"Final image from load_image (kept at original resolution {image.shape})")
     return image
