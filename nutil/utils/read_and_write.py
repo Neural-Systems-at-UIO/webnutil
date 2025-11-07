@@ -108,13 +108,21 @@ def load_quint_json(
     with open(filename) as f:
         vafile = json.load(f)
     if filename.endswith(".waln") or filename.endswith("wwrp"):
-        slices = vafile["sections"]
-        vafile["slices"] = slices
+        # handle both "sections" (newer format) and "slices" (older format)
+        if "sections" in vafile:
+            slices = vafile["sections"]
+            vafile["slices"] = slices
+        elif "slices" in vafile:
+            slices = vafile["slices"]
+        else:
+            raise KeyError(f"JSON file {filename} must contain either 'sections' or 'slices' key")
         for s in slices:
             s["nr"] = int(re.search(r"_s(\d+)", s["filename"]).group(1))
             if "ouv" in s:
                 s["anchoring"] = s["ouv"]
     else:
+        if "slices" not in vafile:
+            raise KeyError(f"JSON file {filename} must contain 'slices' key")
         slices = vafile["slices"]
     if len(slices) > 1 and propagate_missing_values:
         slices = propagate(slices)

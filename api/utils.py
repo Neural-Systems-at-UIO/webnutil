@@ -161,9 +161,9 @@ async def get_json(
 
     await ensure_directory(local_dir)
 
-    # Extract base filename but always save with .json extension
-    base_filename = os.path.splitext(os.path.basename(file_path))[0]
-    local_path = f"{local_dir}{base_filename}.json"  # Ensure .json extension so it works with PyNutil. We can safely persist the use of .waln like this
+    # preserve original extension (.waln, .json, etc.) so load_quint_json can detect format
+    original_filename = os.path.basename(file_path)
+    local_path = f"{local_dir}{original_filename}"
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -224,7 +224,7 @@ async def get_json(
                         await f.write(json_str)
 
                     print(
-                        f"✓ Alignment downloaded and saved to {local_path} (converted to .json)"
+                        f"✓ Alignment downloaded and saved to {local_path}"
                     )
 
                     # Return the parsed JSON content and the local path with .json extension

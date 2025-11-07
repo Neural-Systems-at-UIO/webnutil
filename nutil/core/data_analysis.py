@@ -315,6 +315,16 @@ def _merge_dataframes(
         )
 
         if current_df.empty or "idx" not in current_df.columns:
+            # no pixel/object counts - add columns with zeros
+            all_region_df["pixel_count"] = 0
+            all_region_df["object_count"] = 0
+            
+            # ensure region_area column exists and fill NaNs
+            if "region_area" not in all_region_df.columns:
+                all_region_df["region_area"] = 0
+            
+            all_region_df = _calculate_area_fractions(all_region_df)
+            all_region_df.fillna(0, inplace=True)
             return all_region_df
 
         # Merge current section data
