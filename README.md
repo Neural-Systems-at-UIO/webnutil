@@ -14,7 +14,8 @@ Webnutil is used as part of the QUINT online workflow: https://quint-webtools.re
 
 # Contributors
 
-Programming: Arda Balkir and Harry Carey
+Programming: Arda Balkir and Harry Carey.
+
 Conception, design and validation: Sharon C Yates, Maja A Puchades, Gergely Csucs and Jan G Bjaalie. 
 
 # Licence
