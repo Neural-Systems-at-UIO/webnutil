@@ -34,7 +34,7 @@ Webnutil is developed by the Neural Systems Laboratory at the Institute of Basic
 
 Report issues here on github or email: support@ebrains.eu 
 
-## Technical information
+# Technical information
 
 Webnutil-service performs automated spatial quantification of labeled structures in brain tissue sections by:
 
