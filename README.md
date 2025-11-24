@@ -1,11 +1,39 @@
 # webnutil-service
 
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+Webnutil builds on [PyNutil](https://github.com/Neural-Systems-at-UIO/PyNutil), a high-performance Python library for spatial analysis of histological brain section images using a reference brain atlases. It implements the core quantification algorithms from the [QUINT workflow](https://quint-workflow.readthedocs.io/en/latest/), designed to replicate and extend the Quantifier feature of the Nutil software (RRID: SCR_017183). 
+
+WebNutil is used to perform the quantification step in the QUINT online workflow. 
+
+# Access
+
+The QUINT online workflow combines the use of a series of web-applications integrated in an online platform, accessible through EBRAINS at https://quint-online.apps.ebrains.eu/
+
+# Documentation
+
+Webnutil is used as part of the QUINT online workflow: https://quint-webtools.readthedocs.io/en/latest/
+
+# Contributors
+
+Programming: Arda Balkir and Harry Carey
+Conception, design and validation: Sharon C Yates, Maja A Puchades, Gergely Csucs and Jan G Bjaalie. 
+
+# Licence
+
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Webnutil builds on [PyNutil](https://github.com/Neural-Systems-at-UIO/PyNutil): a high-performance Python library for spatial analysis of histological brain section images using a reference brain atlases. It implements the core quantification algorithms from the [QUINT workflow](https://quint-workflow.readthedocs.io/en/latest/), designed to replicate and extend the Quantifier feature of the Nutil software (RRID: SCR_017183).
+# Citation
 
-## Overview
+Puchades MA, Yates SC, Csucs G, Carey H, Balkir A, Leergaard TB, Bjaalie JG. Software and pipelines for registration and analyses of rodent brain image data in reference atlas space. Front Neuroinform. 2025 Sep 24;19:1629388. htpps://10.3389/fninf.2025.1629388.
+
+# Acknowledgements
+
+Webnutil is developed by the Neural Systems Laboratory at the Institute of Basic Medical Sciences, University of Oslo, Norway with support from the EBRAINS infrastructure, and funding from the European Union’s Horizon 2020 Framework Programme for Research and Innovation under the Framework Partnership Agreement No. 650003 (HBP FPA) and the European Union’s Horizon Europe Programme for Research Infrastructures Grant Agreement No. 101147319 (EBRAINS 2.0).
+
+# Contact us
+
+Report issues here on github or email: support@ebrains.eu 
+
+## Technical information
 
 Webnutil-service performs automated spatial quantification of labeled structures in brain tissue sections by:
 
@@ -46,7 +74,7 @@ The service requires two primary inputs:
 
 #### Nutil Module Requirements
 
-- Python 3.9+
+- Python 3.9+ [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/) 
 - NumPy
 - OpenCV
 - scikit-image
