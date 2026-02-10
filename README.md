@@ -1,8 +1,6 @@
-# webnutil-service
+# webnutil-service (RRID:SCR_027944)
 
-Webnutil builds on [PyNutil](https://github.com/Neural-Systems-at-UIO/PyNutil), a high-performance Python library for spatial analysis of histological brain section images using a reference brain atlases. It implements the core quantification algorithms from the [QUINT workflow](https://quint-workflow.readthedocs.io/en/latest/), designed to replicate and extend the Quantifier feature of the Nutil software (RRID: SCR_017183). 
-
-WebNutil is used to perform the quantification step in the QUINT online workflow. 
+Webnutil-service builds on [Nutil](https://github.com/Neural-Systems-at-UIO/nutil) and [PyNutil](https://github.com/Neural-Systems-at-UIO/PyNutil). It is a high-performance Python library for spatial analysis of histological brain section images using a reference brain atlases. It implements the core quantification algorithms from the [QUINT workflow](https://quint-workflow.readthedocs.io/en/latest/), replicating and extending the Quantifier feature of the Nutil software (RRID: SCR_017183). 
 
 # Access
 
@@ -23,6 +21,8 @@ Conception, design and validation: Sharon C Yates, Maja A Puchades, Gergely Csuc
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 # Citation
+
+WebNutil (RRID:SCR_027944).
 
 Puchades MA, Yates SC, Csucs G, Carey H, Balkir A, Leergaard TB, Bjaalie JG. Software and pipelines for registration and analyses of rodent brain image data in reference atlas space. Front Neuroinform. 2025 Sep 24;19:1629388. htpps://10.3389/fninf.2025.1629388.
 
