@@ -1,0 +1,118 @@
+{
+  "@context": "https://w3id.org/codemeta/3.0",
+  "@type": "SoftwareSourceCode",
+  "name": "WebNutil",
+  "identifier": "RRID:SCR_027944",
+  "description": "Software Python library for spatial analysis of histological brain section images using a reference brain atlas. Implements the core quantification algorithms from the QUINT workflow, designed to replicate and extend the Quantifier feature of the Nutil software. ",
+  "author": [
+    {
+      "givenName": "Arda",
+      "familyName": "Balkir",
+      "type": "Person",
+      "id": "https://orcid.org/0009-0009-3003-7860",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    },
+    {
+      "givenName": "Sharon C.",
+      "familyName": "Yates",
+      "type": "Person",
+      "id": "https://orcid.org/0000-0002-3001-8725",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    },
+    {
+      "givenName": "Harry",
+      "familyName": "Carey",
+      "type": "Person",
+      "id": "https://orcid.org/0000-0002-4111-6259",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    },
+    {
+      "givenName": "Gergely",
+      "familyName": "Csucs",
+      "type": "Person",
+      "id": "https://orcid.org/0000-0002-2093-6274",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    },
+    {
+      "givenName": "Maja A",
+      "familyName": "Puchades",
+      "type": "Person",
+      "id": "https://orcid.org/0000-0002-4536-8197",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    },
+    {
+      "givenName": "Jan G.",
+      "familyName": "Bjaalie",
+      "type": "Person",
+      "id": "https://orcid.org/0000-0001-7899-906X",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    }
+  ],
+  "license": [
+    "https://spdx.org/licenses/MIT"
+  ],
+  "codeRepository": "https://github.com/Neural-Systems-at-UIO/webnutil",
+  "relatedLink": [
+    "https://quint-webtools.readthedocs.io/en/latest/"
+  ],
+  "softwareHelp": [
+    "mailto:support@ebrains.eu"
+  ],
+  "programmingLanguage": [
+    "Python"
+  ],
+  "version": "1.0",
+  "operatingSystem": [
+    "Windows",
+    "macOS",
+    "Linux"
+  ],
+  "dateModified": "2025-11-07",
+  "downloadUrl": "https://github.com/Neural-Systems-at-UIO/webnutil",
+  "developmentStatus": "active",
+  "keywords": [
+    "Atlas",
+    "Image processing",
+    "Quantification",
+    "Computer vision",
+    "Visualisation"
+  ],
+ "maintainer": [
+    {
+      "givenName": "Arda",
+      "familyName": "Balkir",
+      "type": "Person",
+      "id": "https://orcid.org/0009-0009-3003-7860",
+      "affiliation": {
+        "type": "Organization",
+        "name": "NeSys lab, University of Oslo"
+      }
+    }
+  ],
+
+  "applicationCategory": "application",
+  "isPartOf": "QUINT-online",
+  "funder": {
+    "type": "Organization",
+    "name": "HORIZON-INFRA (EBRAINS 2.0)"
+  },
+  "funding": "101147319"
+}
