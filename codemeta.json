@@ -69,7 +69,7 @@
   "license": [
     "https://spdx.org/licenses/MIT"
   ],
-  "codeRepository": "https://github.com/Neural-Systems-at-UIO/webnutil",
+  "codeRepository": "https://github.com/Neural-Systems-at-UIO/webnutil/releases/tag/V1.0",
   "relatedLink": [
     "https://quint-webtools.readthedocs.io/en/latest/"
   ],
