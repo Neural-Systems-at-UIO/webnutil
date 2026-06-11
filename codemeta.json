@@ -69,7 +69,7 @@
   "license": [
     "https://spdx.org/licenses/MIT"
   ],
-  "codeRepository": "https://github.com/Neural-Systems-at-UIO/webnutil/releases/tag/V1.0",
+  "codeRepository": "https://github.com/Neural-Systems-at-UIO/webnutil",
   "relatedLink": [
     "https://quint-webtools.readthedocs.io/en/latest/"
   ],
@@ -86,7 +86,7 @@
     "Linux"
   ],
   "dateModified": "2025-11-07",
-  "downloadUrl": "https://github.com/Neural-Systems-at-UIO/webnutil",
+  "downloadUrl": "https://github.com/Neural-Systems-at-UIO/webnutil/releases/tag/V1.0",
   "developmentStatus": "active",
   "keywords": [
     "Atlas",
